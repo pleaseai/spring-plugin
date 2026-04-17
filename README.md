@@ -4,7 +4,7 @@
 
 Detects Spring versions from your build files, downloads matching reference docs as LLM-friendly Markdown, and makes them available to Claude Code as version-aware skills. Works across Spring Framework, Boot, Security, Data, and Cloud.
 
-[![License](https://img.shields.io/badge/license-FSL--1.1--ALv2-blue)](./LICENSE)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue)](./LICENSE)
 
 ## What this does
 
@@ -347,7 +347,7 @@ Issues and PRs welcome. See [`CONTRIBUTING.md`](./CONTRIBUTING.md).
 
 ### Plugin code
 
-Licensed under **FSL-1.1-ALv2**. See [`LICENSE`](./LICENSE).
+Licensed under **Apache-2.0**. See [`LICENSE`](./LICENSE).
 
 ### Generated archives
 
