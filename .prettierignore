@@ -1,0 +1,19 @@
+# Dependencies and build output
+node_modules/
+dist/
+
+# Lockfiles
+bun.lock
+*.lockb
+
+# Workspace state and external configs (not authored by this plugin)
+.please/
+.claude/
+.context/
+
+# Root project documentation (scaffold track is constrained from rewriting these;
+# treat as out-of-scope for formatting until a docs track owns them)
+ARCHITECTURE.md
+CLAUDE.md
+LICENSE
+README.md

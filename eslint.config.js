@@ -4,12 +4,7 @@ import globals from 'globals';
 
 export default tseslint.config(
   {
-    ignores: [
-      'node_modules/**',
-      'dist/**',
-      '.please/state/**',
-      'bun.lock',
-    ],
+    ignores: ['node_modules/**', 'dist/**', '.please/state/**', 'bun.lock'],
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,
@@ -29,10 +24,7 @@ export default tseslint.config(
         'error',
         { argsIgnorePattern: '^_', varsIgnorePattern: '^_' },
       ],
-      '@typescript-eslint/consistent-type-imports': [
-        'error',
-        { prefer: 'type-imports' },
-      ],
+      '@typescript-eslint/consistent-type-imports': ['error', { prefer: 'type-imports' }],
       eqeqeq: ['error', 'always'],
     },
   },

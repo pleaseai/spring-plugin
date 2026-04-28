@@ -41,7 +41,7 @@ The repository today contains only `README.md`, `ARCHITECTURE.md`, `CLAUDE.md`, 
 - [x] T002 Create `package.json` + `tsconfig.json` and run `bun install` to generate `bun.lock` (file: `package.json`, `tsconfig.json`, `bun.lock`) — Bun 1.3+ writes text-format `bun.lock`, not legacy `bun.lockb`
 - [x] T003 [P] Add placeholder test and verify `bun test` is wired (file: `scripts/lib/__tests__/scaffold.test.ts`) (depends on T002)
 - [x] T004 [P] Add ESLint flat config and verify `bun run lint` exits 0 (file: `eslint.config.js`) (depends on T002)
-- [ ] T005 [P] Add Prettier config and verify `bun run format --check` exits 0 (file: `.prettierrc`, `.prettierignore`) (depends on T002)
+- [x] T005 [P] Add Prettier config and verify `bun run format:check` exits 0 (file: `.prettierrc`, `.prettierignore`) (depends on T002)
 - [ ] T006 Wire Husky pre-commit hook and `lint-staged` config (file: `.husky/pre-commit`, `package.json` `lint-staged` block) (depends on T002, T004, T005)
 - [ ] T007 [P] Add CI workflow that runs typecheck/lint/test on PRs (file: `.github/workflows/ci.yml`) (depends on T002)
 - [ ] T008 Append "Local Development" / "Project Layout" subsection to `README.md` referencing the real scripts (file: `README.md`) (depends on T002, T003, T004, T005)
@@ -89,6 +89,7 @@ Tied to spec Success Criteria (SC-1…SC-7):
 - 2026-04-28T19:08Z — T002 done: `package.json` (Bun runtime, ESM, scripts/test+typecheck, deps pinned), `tsconfig.json` (strict + bundler resolution), `bun install` produced `bun.lock` (text format). `node_modules/` ignored.
 - 2026-04-28T19:09Z — T003 done: placeholder test (`scripts/lib/__tests__/scaffold.test.ts`) using `bun:test`. `bun test` reports 1 pass / 0 fail. `bun run typecheck` exits 0 (TS18003 resolved). SC-2 + SC-4 verified.
 - 2026-04-28T19:11Z — T004 done: `eslint.config.js` flat config with `typescript-eslint` recommended preset + hygiene rules (`no-unused-vars`, `consistent-type-imports`, `eqeqeq`). `bun run lint` exits 0 with `--max-warnings 0`. SC-3 verified.
+- 2026-04-28T19:13Z — T005 done: `.prettierrc` (semi, single-quote, trailing-comma, 100 col), `.prettierignore` (excludes `.please/`, `.claude/`, root markdown out-of-scaffold-scope). Scripts `format` / `format:check`. `bun run format:check` exits 0.
 
 ## Decision Log
 
