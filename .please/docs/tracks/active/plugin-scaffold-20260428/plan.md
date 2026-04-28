@@ -37,7 +37,7 @@ The repository today contains only `README.md`, `ARCHITECTURE.md`, `CLAUDE.md`, 
 
 ## Tasks
 
-- [ ] T001 [P] Create `.claude-plugin/plugin.json` and empty layout directories (file: `.claude-plugin/plugin.json`, plus `.gitkeep` in `commands/`, `skills/`, `scripts/`, `scripts/lib/`)
+- [x] T001 [P] Create `.claude-plugin/plugin.json` and empty layout directories (file: `.claude-plugin/plugin.json`, plus `.gitkeep` in `commands/`, `skills/`, `scripts/`, `scripts/lib/`)
 - [ ] T002 Create `package.json` + `tsconfig.json` and run `bun install` to generate `bun.lockb` (file: `package.json`, `tsconfig.json`, `bun.lockb`)
 - [ ] T003 [P] Add placeholder test and verify `bun test` is wired (file: `scripts/lib/__tests__/scaffold.test.ts`) (depends on T002)
 - [ ] T004 [P] Add ESLint flat config and verify `bun run lint` exits 0 (file: `eslint.config.js`) (depends on T002)
@@ -85,7 +85,7 @@ Tied to spec Success Criteria (SC-1…SC-7):
 
 ## Progress
 
-(Implementation will fill this section.)
+- 2026-04-28T19:05Z — T001 done: `.claude-plugin/plugin.json` + `.gitkeep` placeholders for `commands/`, `skills/`, `scripts/`, `scripts/lib/`.
 
 ## Decision Log
 

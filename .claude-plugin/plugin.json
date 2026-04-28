@@ -1,0 +1,20 @@
+{
+  "name": "@pleaseai/spring",
+  "version": "0.0.0",
+  "description": "Detect Spring versions from build files and install version-matched reference docs as Claude Code skills.",
+  "keywords": [
+    "spring",
+    "spring-framework",
+    "spring-boot",
+    "claude-code",
+    "skills",
+    "documentation"
+  ],
+  "author": {
+    "name": "Passion Factory",
+    "url": "https://passionfactory.ai"
+  },
+  "homepage": "https://github.com/pleaseai/spring-plugin",
+  "repository": "https://github.com/pleaseai/spring-plugin",
+  "license": "Apache-2.0"
+}
