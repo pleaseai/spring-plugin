@@ -38,7 +38,7 @@ The repository today contains only `README.md`, `ARCHITECTURE.md`, `CLAUDE.md`, 
 ## Tasks
 
 - [x] T001 [P] Create `.claude-plugin/plugin.json` and empty layout directories (file: `.claude-plugin/plugin.json`, plus `.gitkeep` in `commands/`, `skills/`, `scripts/`, `scripts/lib/`)
-- [ ] T002 Create `package.json` + `tsconfig.json` and run `bun install` to generate `bun.lockb` (file: `package.json`, `tsconfig.json`, `bun.lockb`)
+- [x] T002 Create `package.json` + `tsconfig.json` and run `bun install` to generate `bun.lock` (file: `package.json`, `tsconfig.json`, `bun.lock`) — Bun 1.3+ writes text-format `bun.lock`, not legacy `bun.lockb`
 - [ ] T003 [P] Add placeholder test and verify `bun test` is wired (file: `scripts/lib/__tests__/scaffold.test.ts`) (depends on T002)
 - [ ] T004 [P] Add ESLint flat config and verify `bun run lint` exits 0 (file: `eslint.config.js`) (depends on T002)
 - [ ] T005 [P] Add Prettier config and verify `bun run format --check` exits 0 (file: `.prettierrc`, `.prettierignore`) (depends on T002)
@@ -86,6 +86,7 @@ Tied to spec Success Criteria (SC-1…SC-7):
 ## Progress
 
 - 2026-04-28T19:05Z — T001 done: `.claude-plugin/plugin.json` + `.gitkeep` placeholders for `commands/`, `skills/`, `scripts/`, `scripts/lib/`.
+- 2026-04-28T19:08Z — T002 done: `package.json` (Bun runtime, ESM, scripts/test+typecheck, deps pinned), `tsconfig.json` (strict + bundler resolution), `bun install` produced `bun.lock` (text format). `node_modules/` ignored.
 
 ## Decision Log
 
@@ -93,4 +94,5 @@ Tied to spec Success Criteria (SC-1…SC-7):
 
 ## Surprises & Discoveries
 
-(Implementation will record unexpected findings here.)
+- **2026-04-28 / T002**: Bun 1.3.13 emits a **text-format `bun.lock`** (TOML-ish), not the legacy binary `bun.lockb`. The plan and spec referenced `bun.lockb` based on older Bun behavior. Text format is preferable for code review (diff-friendly) — committed as-is. CI's `--frozen-lockfile` works against both formats.
+- **2026-04-28 / T002**: `tsc --noEmit` on the current empty include pattern emits TS18003 ("No inputs were found"). Resolved naturally once T003 adds the first `.ts` file. Adjusting tsconfig to suppress was rejected — better to let the typechecker enforce that source exists before being declared green.

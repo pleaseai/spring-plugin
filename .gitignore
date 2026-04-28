@@ -1,2 +1,18 @@
 # please plugin runtime state
 .please/state/
+
+# node / bun
+node_modules/
+
+# editor / OS
+.DS_Store
+*.swp
+.idea/
+.vscode/
+
+# build artifacts
+dist/
+*.tsbuildinfo
+
+# logs
+*.log
