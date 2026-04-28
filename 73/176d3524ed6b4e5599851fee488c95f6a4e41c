@@ -1,0 +1,24 @@
+.please/docs/knowledge/workflow.md
+  8b2be5e47ef9b8ba 110,113-115
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "73176d3524ed6b4e5599851fee488c95f6a4e41c",
+  "prompts": {
+    "8b2be5e47ef9b8ba": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "fd993c1c-97e7-4a58-b4d2-c22a8371fa96",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Minsu Lee",
+      "messages": [],
+      "total_additions": 5,
+      "total_deletions": 1,
+      "accepted_lines": 6,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/1517e894e470924b7ac42a657d3ff05c09025944d806b647c49fb107711e1917"
+    }
+  }
+}
