@@ -14,9 +14,9 @@ For full file listing with workspace artifacts, use `Skill("please:project-knowl
 
 ### Project Documents
 - `ARCHITECTURE.md` — Codebase structure, module boundaries, architectural invariants
-- `DESIGN.md` — Design decisions, patterns, data flows
-- `SECURITY.md` — Security policies, authentication, authorization
-- `CONTRIBUTING.md` — Contribution guide, code review process
+- `DESIGN.md` — Design decisions, patterns, data flows _(not yet written)_
+- `SECURITY.md` — Security policies, authentication, authorization _(not yet written)_
+- `CONTRIBUTING.md` — Contribution guide, code review process _(not yet written)_
 
 ### Domain Knowledge (.please/docs/knowledge/)
 - `product.md` — Product vision, goals, target users
