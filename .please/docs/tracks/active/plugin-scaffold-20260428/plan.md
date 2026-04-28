@@ -44,7 +44,7 @@ The repository today contains only `README.md`, `ARCHITECTURE.md`, `CLAUDE.md`, 
 - [x] T005 [P] Add Prettier config and verify `bun run format:check` exits 0 (file: `.prettierrc`, `.prettierignore`) (depends on T002)
 - [x] T006 Wire Husky pre-commit hook and `lint-staged` config (file: `.husky/pre-commit`, `package.json` `lint-staged` block) (depends on T002, T004, T005)
 - [x] T007 [P] Add CI workflow that runs typecheck/lint/format:check/test on PRs (file: `.github/workflows/ci.yml`) (depends on T002)
-- [ ] T008 Append "Local Development" / "Project Layout" subsection to `README.md` referencing the real scripts (file: `README.md`) (depends on T002, T003, T004, T005)
+- [x] T008 Append "Local Development" / "Project Layout" subsection to `README.md` referencing the real scripts (file: `README.md`) (depends on T002, T003, T004, T005)
 
 ## Dependencies
 
@@ -92,6 +92,7 @@ Tied to spec Success Criteria (SC-1…SC-7):
 - 2026-04-28T19:13Z — T005 done: `.prettierrc` (semi, single-quote, trailing-comma, 100 col), `.prettierignore` (excludes `.please/`, `.claude/`, root markdown out-of-scaffold-scope). Scripts `format` / `format:check`. `bun run format:check` exits 0.
 - 2026-04-28T19:16Z — T006 done: `husky init` wired hook chain via `.husky/_/`. `.husky/pre-commit` runs `bunx lint-staged`. Lint-staged config in `package.json` runs eslint+prettier on staged TS/JS, prettier on JSON/MD/YAML. Hook **fired live during this commit** (lint-staged output captured) — SC-7 verified.
 - 2026-04-28T19:18Z — T007 done: `.github/workflows/ci.yml` runs on PRs+pushes to main. Single Bun version (`latest`) via `oven-sh/setup-bun@v2`, `bun install --frozen-lockfile`, then typecheck → lint → format:check → test. SC-5 will be verified once the PR runs in CI.
+- 2026-04-28T19:20Z — T008 done: appended `### Local Development` and `### Project Layout` subsections inside the existing `## Development` section of `README.md`. Lists the real scripts (`bun run typecheck/lint/format/test`) and the actual on-disk layout. Existing aspirational content kept untouched per spec.
 
 ## Decision Log
 

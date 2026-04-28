@@ -343,6 +343,39 @@ ln -s "$(pwd)" ~/.claude/plugins/spring
 
 Issues and PRs welcome. See [`CONTRIBUTING.md`](./CONTRIBUTING.md).
 
+### Local Development
+
+After cloning, install dev dependencies and run the toolchain:
+
+```bash
+bun install                # install dev deps from bun.lock
+bun run typecheck          # tsc --noEmit
+bun run lint               # ESLint flat config (max-warnings 0)
+bun run format:check       # Prettier --check
+bun run format             # Prettier --write (apply formatting)
+bun test                   # Bun test runner
+```
+
+A pre-commit hook (Husky + `lint-staged`) runs ESLint and Prettier on staged
+TypeScript files automatically. The same checks run in CI on every PR via
+`.github/workflows/ci.yml`.
+
+### Project Layout
+
+```
+.claude-plugin/plugin.json     plugin manifest (only file in this directory)
+commands/                      slash command entry points (placeholder)
+skills/                        auto-loaded skills (placeholder)
+scripts/                       implementation scripts (placeholder)
+└── lib/__tests__/             placeholder test confirming bun test wiring
+.github/workflows/ci.yml       typecheck / lint / format / test on PRs
+.husky/pre-commit              lint-staged on commit
+.please/                       workspace state (specs, plans, knowledge)
+```
+
+The repository is currently a tooling skeleton — source files (`scripts/*.ts`,
+`skills/*/SKILL.md`, `commands/*.md`) land in subsequent feature tracks.
+
 ## Licensing
 
 ### Plugin code
