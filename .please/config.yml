@@ -1,0 +1,27 @@
+schema_version: 3          # Config schema version (do not edit manually)
+
+language: en               # Output language (ko | en)
+
+# GitHub integration
+github:
+  project: 2
+  owner: pleaseai
+  issue_required: true
+  project_id: PVT_kwDODf_st84BRosi
+  status_field_id: PVTSSF_lADODf_st84BRosizg_aA44
+  status_options:
+    todo: 7b57aadf
+    in_progress: 538085b7
+    human_review: 3c1bd18c       # mapped to "In Review" (no "Human Review" option)
+    done: e190f53f
+    # merging / rework: not present in this project's Status field
+
+# Document path overrides (optional — defaults shown)
+docs:
+  tracks: .please/docs/tracks
+  product-specs: .please/docs/product-specs
+  decisions: .please/docs/decisions
+  investigations: .please/docs/investigations
+  research: .please/docs/research
+  references: .please/docs/references
+  knowledge: .please/docs/knowledge
