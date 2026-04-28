@@ -1,0 +1,28 @@
+eslint.config.js
+  8b2be5e47ef9b8ba 1-39
+.please/docs/tracks/active/plugin-scaffold-20260428/plan.md
+  8b2be5e47ef9b8ba 43,91
+package.json
+  8b2be5e47ef9b8ba 18-19,22,24-27
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "3b48a9a84d9e88c2786dc5372f50b1218c92b97a",
+  "prompts": {
+    "8b2be5e47ef9b8ba": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "fd993c1c-97e7-4a58-b4d2-c22a8371fa96",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Minsu Lee",
+      "messages": [],
+      "total_additions": 50,
+      "total_deletions": 5,
+      "accepted_lines": 49,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/7829fbe2fa3d9abc70b6368f13dd5f50c6b1165655faae07c02e90cd0deac6ca"
+    }
+  }
+}
