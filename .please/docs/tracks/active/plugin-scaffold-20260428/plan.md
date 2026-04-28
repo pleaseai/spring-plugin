@@ -39,7 +39,7 @@ The repository today contains only `README.md`, `ARCHITECTURE.md`, `CLAUDE.md`, 
 
 - [x] T001 [P] Create `.claude-plugin/plugin.json` and empty layout directories (file: `.claude-plugin/plugin.json`, plus `.gitkeep` in `commands/`, `skills/`, `scripts/`, `scripts/lib/`)
 - [x] T002 Create `package.json` + `tsconfig.json` and run `bun install` to generate `bun.lock` (file: `package.json`, `tsconfig.json`, `bun.lock`) — Bun 1.3+ writes text-format `bun.lock`, not legacy `bun.lockb`
-- [ ] T003 [P] Add placeholder test and verify `bun test` is wired (file: `scripts/lib/__tests__/scaffold.test.ts`) (depends on T002)
+- [x] T003 [P] Add placeholder test and verify `bun test` is wired (file: `scripts/lib/__tests__/scaffold.test.ts`) (depends on T002)
 - [ ] T004 [P] Add ESLint flat config and verify `bun run lint` exits 0 (file: `eslint.config.js`) (depends on T002)
 - [ ] T005 [P] Add Prettier config and verify `bun run format --check` exits 0 (file: `.prettierrc`, `.prettierignore`) (depends on T002)
 - [ ] T006 Wire Husky pre-commit hook and `lint-staged` config (file: `.husky/pre-commit`, `package.json` `lint-staged` block) (depends on T002, T004, T005)
@@ -87,6 +87,7 @@ Tied to spec Success Criteria (SC-1…SC-7):
 
 - 2026-04-28T19:05Z — T001 done: `.claude-plugin/plugin.json` + `.gitkeep` placeholders for `commands/`, `skills/`, `scripts/`, `scripts/lib/`.
 - 2026-04-28T19:08Z — T002 done: `package.json` (Bun runtime, ESM, scripts/test+typecheck, deps pinned), `tsconfig.json` (strict + bundler resolution), `bun install` produced `bun.lock` (text format). `node_modules/` ignored.
+- 2026-04-28T19:09Z — T003 done: placeholder test (`scripts/lib/__tests__/scaffold.test.ts`) using `bun:test`. `bun test` reports 1 pass / 0 fail. `bun run typecheck` exits 0 (TS18003 resolved). SC-2 + SC-4 verified.
 
 ## Decision Log
 
