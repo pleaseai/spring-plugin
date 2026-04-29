@@ -1,6 +1,9 @@
 # please plugin runtime state
 .please/state/
 
+# claude code scheduler runtime state (per-session lock files)
+.claude/scheduled_tasks.lock
+
 # node / bun
 node_modules/
 
