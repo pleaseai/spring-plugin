@@ -20,10 +20,12 @@ The hook layer translates "user opens or edits a Spring project" into "the versi
 - [ ] **FR-1**: Implement `scripts/sync.ts` as the single orchestrator entry point invoked by all three hooks. CLI signature: `bun run scripts/sync.ts --project-dir <abs-path> [--quiet] [--allow-build-tool] [--pre-warm]`.
 - [ ] **FR-2**: `sync.ts` invokes `scripts/detect.ts` (Tier 1 per ADR-0002), passes the resolved Boot version to `scripts/resolve.ts` to fetch the component-version map, and writes the combined result to `~/.cache/pleaseai-spring/projects/<sha256(absolute project_dir)>.json`.
 - [ ] **FR-3**: Atomic cache write — write to a sibling temp file in the same directory, then `rename(2)` over the destination. Prevents torn reads from concurrent skill invocations sharing the same project.
-- [ ] **FR-4**: Cache schema:
+- [ ] **FR-4**: Cache schema (tagged union mirroring `DetectResult` from `build-file-detect-20260428` FR-8):
   ```json
+  // kind: "detected" — Boot version successfully resolved (Tier 1, 2, or 3)
   {
     "project_dir": "/abs/path",
+    "kind": "detected",
     "boot": "3.5.0",
     "components": { "framework": "6.2.1", "security": "6.4.0", "...": "..." },
     "detected_at": "2026-04-29T12:34:56Z",
@@ -31,8 +33,33 @@ The hook layer translates "user opens or edits a Spring project" into "the versi
     "tier": 1,
     "needs_consent": false
   }
+
+  // kind: "unsupported" — static parsing recognized but cannot resolve;
+  //   FR-5 mandates `needs_consent: true` whenever reason contains
+  //   `requires-build-tool` and the user has not granted Tier-2 consent.
+  {
+    "project_dir": "/abs/path",
+    "kind": "unsupported",
+    "reason": "requires-build-tool: buildSrc-based plugin definition",
+    "suggestion": "Run with --boot <version> or grant build-tool consent",
+    "detected_at": "2026-04-29T12:34:56Z",
+    "source": { "file": "build.gradle.kts", "locator": "plugins block", "line": 5 },
+    "tier": 1,
+    "needs_consent": true
+  }
+
+  // kind: "not-found" — no recognized build file at the project root
+  {
+    "project_dir": "/abs/path",
+    "kind": "not-found",
+    "reason": "No supported build file at <path>",
+    "suggestion": "Run from a Spring project root, or pass --boot <version>",
+    "detected_at": "2026-04-29T12:34:56Z",
+    "tier": 1,
+    "needs_consent": false
+  }
   ```
-  Fields `tier` and `needs_consent` correspond to ADR-0002's three-tier escalation.
+  All variants share `project_dir`, `kind`, `detected_at`, `tier`, `needs_consent`. Fields `tier` and `needs_consent` correspond to ADR-0002's three-tier escalation. AC-5 references the `unsupported` shape (with `needs_consent: true`) as a successful sync.
 - [ ] **FR-5**: When detect returns `kind: 'unsupported'` with `reason` containing `requires-build-tool` (per build-file-detect FR-17) and `--allow-build-tool` was not passed, write `kind: 'unsupported'` + `needs_consent: true` to the cache. The skill flow handles the consent prompt; sync.ts itself never prompts because hooks are non-interactive.
 - [ ] **FR-6**: Configure `SessionStart` hook (matchers `startup`, `resume`) in `.claude-plugin/hooks/hooks.json` to invoke sync.ts with `async: true`, `asyncRewake: true`, `timeout: 30`, command `bun run "$CLAUDE_PLUGIN_ROOT/scripts/sync.ts" --project-dir "$CLAUDE_PROJECT_DIR"`.
 - [ ] **FR-7**: Configure `FileChanged` hook with literal-filename matcher `pom.xml|build.gradle|build.gradle.kts|settings.gradle|settings.gradle.kts|libs.versions.toml|gradle.properties` (the FileChanged event uses literal filenames, not regex) to invoke sync.ts with the same flags as FR-6.

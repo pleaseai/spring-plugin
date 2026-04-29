@@ -71,7 +71,7 @@ T001 is the spine; everything layers on the base skill file. T002 (library mappi
 
 ### Automated Tests
 
-- [ ] Eval suite case (T008) passes: a Spring Security question in a Boot 3.5.0 fixture returns Security 6.4.x documentation citations.
+- [ ] Eval suite case (T008) passes: a Spring Security question in a Boot 3.5.0 fixture returns Security 6.4.x documentation citations. **Conditional: required only when the eval suite is wired (per T008's "optional if eval suite is not yet wired; otherwise required" condition).** When the eval suite is not yet present, T006's manual false-positive validation is the sole automated gate for this track.
 - [ ] Skill description does not match a curated false-positive set (T006): Java/Kotlin questions, Vue/React questions, generic JVM questions all leave the skill silent.
 
 ### Observable Outcomes

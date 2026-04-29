@@ -35,11 +35,16 @@ The function lives in the **Domain Layer** per `ARCHITECTURE.md`: it may read fi
     | { kind: 'not-found'; reason: string; suggestion: string }
 
   type DetectSource = {
-    file: string         // relative path from project root for in-project sources;
-                         // absolute path (typically `~/...` expanded) for out-of-project
-                         // sources such as `~/.m2/repository/...` (FR-14),
-                         // `~/.gradle/caches/...` (FR-16), or
-                         // `~/.cache/pleaseai-spring/overrides.json` (FR-15).
+    file: string         // For in-project sources: POSIX-relative path from the project root
+                         // (e.g., `pom.xml`, `gradle/libs.versions.toml`).
+                         // For out-of-project sources: POSIX absolute path with the user's
+                         // home directory expanded (e.g., `/Users/alice/.m2/repository/...`,
+                         // `/home/bob/.cache/pleaseai-spring/overrides.json`). Implementations
+                         // MUST expand `~/` to the resolved `$HOME` before storing the value;
+                         // the literal `~/` prefix never appears in the stored string.
+                         // Spec text uses `~/` as readability shorthand only; the contract is
+                         // an absolute path. Out-of-project sources include FR-14 (~/.m2 cache),
+                         // FR-15 (overrides.json), and FR-16 (~/.gradle cache, our own cache).
     locator: string      // human-readable hint (e.g., "spring-boot-starter-parent in <parent>")
     line?: number        // best-effort line number for diagnostics
   }
