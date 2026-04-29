@@ -1,0 +1,32 @@
+.please/docs/tracks/active/hook-sync-20260429/spec.md
+  2820ece447df382f 92
+.please/docs/tracks/active/build-file-detect-20260428/spec.md
+  2820ece447df382f 59
+.please/docs/decisions/0003-extended-static-parser-coverage.md
+  2820ece447df382f 97-99
+.please/docs/tracks/active/hook-sync-20260429/plan.md
+  2820ece447df382f 9,86
+.please/docs/tracks/active/spring-ask-skill-20260429/plan.md
+  2820ece447df382f 9,76-77
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "d69063bcc6abaa6db4d876e537130a67a39fd0f3",
+  "prompts": {
+    "2820ece447df382f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e707443f-9235-45b6-9a58-faefaed4eed3",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Minsu Lee",
+      "messages": [],
+      "total_additions": 10,
+      "total_deletions": 6,
+      "accepted_lines": 12,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/29100fbe85c7c0bb78deb35e92e587fcb1e35860176106268049384a04acc270"
+    }
+  }
+}
