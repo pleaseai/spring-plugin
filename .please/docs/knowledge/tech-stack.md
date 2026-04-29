@@ -8,7 +8,7 @@
 - **What**: JavaScript runtime for executing plugin scripts.
 - **Why**: Fast startup (~10ms vs ~80ms for Node), built-in TypeScript without a bundler, native fetch/glob APIs.
 - **Where**: `scripts/*.ts` files invoked by skills and slash commands.
-- **Version target**: latest stable (≥1.1).
+- **Version target**: latest stable (≥1.3). The committed `bun.lock` uses Bun's text-format lockfile (default since 1.3); Bun 1.1.x cannot read it. `package.json` `engines.bun` enforces this floor.
 
 ### Node fallback
 - **Why**: Some users may not have Bun. Scripts should not rely on Bun-only globals (`Bun.file`, `Bun.serve`) unless the README documents a Bun requirement.
