@@ -1,0 +1,40 @@
+.please/docs/tracks/active/plugin-scaffold-20260428/plan.md
+  8b2be5e47ef9b8ba 96,106
+scripts/lib/__tests__/scaffold.test.ts
+  8b2be5e47ef9b8ba 1,5-7
+eslint.config.js
+  8b2be5e47ef9b8ba 1,3-19
+.please/docs/tracks/active/plugin-scaffold-20260428/metadata.json
+  8b2be5e47ef9b8ba 6,8
+package.json
+  8b2be5e47ef9b8ba 3,19-20,24,29,32-33
+tsconfig.json
+  8b2be5e47ef9b8ba 4,9-14,18
+README.md
+  8b2be5e47ef9b8ba 353-354,358-362,372
+.please/docs/knowledge/workflow.md
+  8b2be5e47ef9b8ba 110,113-116
+.github/workflows/ci.yml
+  8b2be5e47ef9b8ba 18
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "7d8d9b04b7d1c5c61a0b71a54edec3f584ac9ce9",
+  "prompts": {
+    "8b2be5e47ef9b8ba": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "fd993c1c-97e7-4a58-b4d2-c22a8371fa96",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Minsu Lee",
+      "messages": [],
+      "total_additions": 505,
+      "total_deletions": 133,
+      "accepted_lines": 490,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/70f243f31956f5669eefd2ab0c1b306cfbbb332a9ca73efe6a1e99ca7db7a6f8"
+    }
+  }
+}
