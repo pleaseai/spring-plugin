@@ -1,0 +1,28 @@
+.please/docs/knowledge/tech-stack.md
+  8b2be5e47ef9b8ba 11
+package.json
+  8b2be5e47ef9b8ba 14
+.please/docs/tracks/active/plugin-scaffold-20260428/plan.md
+  8b2be5e47ef9b8ba 44,46
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "8fa5f88d2bda600e2cb86e795f001a15fcb26954",
+  "prompts": {
+    "8b2be5e47ef9b8ba": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "fd993c1c-97e7-4a58-b4d2-c22a8371fa96",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Minsu Lee",
+      "messages": [],
+      "total_additions": 4,
+      "total_deletions": 4,
+      "accepted_lines": 439,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/fc635872cd53877ef476f3fc622d00a8921cc26ee99363081127f8f2573f24e6"
+    }
+  }
+}
