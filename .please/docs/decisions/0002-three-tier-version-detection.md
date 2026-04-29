@@ -57,8 +57,12 @@ invariant — all reads happen in the orchestrator (`scripts/sync.ts`).
 Only fires when Tier 1 returns `kind: 'unsupported'` AND the user has granted
 consent for the project. Used as an *expander*, not an *evaluator*:
 
-- Maven: `mvn help:effective-pom -q -Doutput=/tmp/effective.xml` →
-  Tier-1 parser reads the flattened POM.
+- Maven: `mvn help:effective-pom -q -Doutput="$(mktemp -t spring-detect-effective-XXXXXX.xml)"` →
+  Tier-1 parser reads the flattened POM. The implementation uses `mktemp(1)`
+  (or a per-project path under `~/.cache/pleaseai-spring/tier2/<sha256(project_dir)>.effective-pom.xml`)
+  rather than a fixed `/tmp/effective.xml` to avoid race conditions and
+  cross-project reads under concurrent detection invocations triggered by
+  the lazy hooks (ADR-0001).
 - Gradle: custom init script at
   `~/.cache/pleaseai-spring/gradle-detect-init.gradle` prints the resolved
   Spring Boot plugin version to stdout → Tier-1 string parser consumes it.

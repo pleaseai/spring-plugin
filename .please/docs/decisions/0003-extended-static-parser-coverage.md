@@ -141,8 +141,10 @@ FR-17: Document escalation to Tier 2 (ADR-0002) for `buildSrc/`, settings
   library (e.g., `@iarna/toml`). Pick one and document.
 - **Cache layout assumptions**. `~/.m2/repository` and
   `~/.gradle/caches/modules-2/files-2.1/` are conventional but not
-  contractual. Layout changes (rare but historical) would break FR-7.
-  Mitigation: detect cache layout version, fall back to next source.
+  contractual. Layout changes (rare but historical) would break FR-14
+  (Maven external parent lookup) and FR-16 (published-catalog Gradle
+  cache lookup). Mitigation: detect cache layout version, fall back
+  to next source.
 - **Published catalog fetch (FR-16) introduces network dependency in a
   new place**. Currently only `resolve.ts` and `fetch.ts` make network
   calls (the "single boundary" invariant). FR-16 needs to route through

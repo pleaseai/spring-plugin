@@ -111,7 +111,7 @@ The graph has four natural batches:
 1. **After T001 lands**: T002 and T003 run in parallel.
 2. **After T002 + T003 land**: T004, T008, T009 can all proceed (T004 is the bottleneck for the next batch; T008 and T009 are independent guard tasks that can run alongside).
 3. **After T004 lands**: T005, T006, T007, T011, T014 in parallel; T010 waits for T005/T006/T007.
-4. **After T005, T007, T011 land**: T012, T013, T015, T016 in parallel — these implement the FR-12~17 amendments (per ADR-0003).
+4. **After T005, T007, T011 land**: T012, T013, T015 can proceed in parallel; T016 starts after T011 + T013 land — these implement the FR-12~17 amendments (per ADR-0003).
 
 ## Key Files
 
