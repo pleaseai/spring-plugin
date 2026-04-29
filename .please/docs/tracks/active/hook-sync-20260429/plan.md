@@ -6,7 +6,7 @@
 ## Overview
 
 - **Source**: ADR-0001 (lazy-skill-loading-via-hooks); spec.md
-- **Issue**: TBD
+- **Issue**: #9
 - **Created**: 2026-04-29
 - **Approach**: Two-layer separation — `scripts/sync.ts` is the I/O-bearing orchestrator; cache serialization, hashing, and concurrency primitives live as pure helpers in `scripts/lib/sync-*.ts`. All three Claude Code hooks delegate to the same sync.ts script; per-hook differences are encoded in command-line flags rather than separate scripts.
 
@@ -83,6 +83,7 @@ T001 and T002 are independent and unblock T003. T004 (lock) shares only T002 wit
 - [ ] sync.ts writes cache, exits 0 on no-change, exits 2 on version-change.
 - [ ] sync.ts respects `--quiet` (no stdout) and `--allow-build-tool` (Tier-2 path enabled, validated against build-file-detect FR-17).
 - [ ] End-to-end harness simulates each hook invocation path with fixture builds and asserts the resulting cache state.
+- [ ] Atomic cache write — verify temp+rename behavior produces no partial cache file when sync.ts is killed mid-write (FR-3). Test by truncating the temp file and asserting the destination either has the prior content or no file at all.
 
 ### Observable Outcomes
 

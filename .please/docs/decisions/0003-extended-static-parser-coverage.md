@@ -94,8 +94,9 @@ FR-12: Resolve Gradle plugin version when declared via version catalog
 FR-13: Inspect `settings.gradle(.kts)` `pluginManagement { plugins { ... } }`
        block as a version source.
 FR-14: Resolve Maven external parent POM via ~/.m2/repository lookup when
-       <relativePath> does not point to a sibling project file. Fall back
-       to `unsupported` if not cached locally.
+       the project's <parent> declaration omits <relativePath> or its
+       <relativePath> does not resolve to a sibling project file on disk.
+       Fall back to `unsupported` if not cached locally.
 FR-15: Persist `--boot` override per project to
        ~/.cache/pleaseai-spring/overrides.json keyed by project_dir hash.
 FR-16: Resolve published version catalog (`from("group:artifact:version")`):

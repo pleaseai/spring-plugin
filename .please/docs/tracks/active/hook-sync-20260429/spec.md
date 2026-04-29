@@ -89,7 +89,7 @@ The hook layer translates "user opens or edits a Spring project" into "the versi
 
 ## Out of Scope
 
-- **Tier-2 build-tool fallback execution**. sync.ts orchestrates the escalation surface (`--allow-build-tool` flag, `needs_consent` cache flag) but the actual `mvn help:effective-pom` / `./gradlew` invocation is part of the build-file-detect track's FR-17 work or a follow-up track per ADR-0002.
+- **Tier-2 build-tool fallback execution**. sync.ts orchestrates the escalation surface (`--allow-build-tool` flag, `needs_consent` cache flag) but the actual `mvn help:effective-pom` / `./gradlew` invocation is owned by a follow-up track per ADR-0002. The build-file-detect track's FR-17 only marks the escalation in the result; it does not execute build tools.
 - **The thin skill** that consumes the cache — that is `spring-ask-skill-20260429`.
 - **Cache eviction / TTL**. Per-invocation freshness check via timestamp comparison; long-term cleanup is a separate concern.
 - **`overrides.json` schema and CRUD**. Owned by `build-file-detect-20260428` (FR-15). sync.ts only reads it.
