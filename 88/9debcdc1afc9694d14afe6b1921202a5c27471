@@ -1,0 +1,28 @@
+.please/docs/tracks/active/spring-ask-skill-20260429/metadata.json
+  2820ece447df382f 1-11
+.please/docs/tracks/active/spring-ask-skill-20260429/spec.md
+  2820ece447df382f 1-67
+.please/docs/tracks/active/spring-ask-skill-20260429/plan.md
+  2820ece447df382f 1-101
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "889debcdc1afc9694d14afe6b1921202a5c27471",
+  "prompts": {
+    "2820ece447df382f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e707443f-9235-45b6-9a58-faefaed4eed3",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Minsu Lee",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 195,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/56d39582fca0413f70b8b732dbd91d00cd3f34832b48d5bd98c9f71d853a1684"
+    }
+  }
+}
