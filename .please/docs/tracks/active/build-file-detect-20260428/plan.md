@@ -82,6 +82,12 @@ Data flow: each layer takes typed input and returns a typed result. Parsers neve
 - [ ] T008 [P] Add ESLint `no-restricted-imports` rule that bans `node:fs`, `node:net`, `node:http`, `bun` from `scripts/lib/**/*.ts` (file: `eslint.config.js`) (depends on T002, T003)
 - [ ] T009 [P] Wire `bun test --coverage` into CI and add a coverage threshold check that fails CI if branch coverage of `scripts/lib/detect-*.ts` falls below 90% (file: `.github/workflows/ci.yml`, optional `bunfig.toml`) (depends on T002, T003)
 - [ ] T010 Spot-check on three real Spring sample projects, record versions and exit codes in PR description (manual; no file change) (depends on T005, T006, T007)
+- [ ] T011 [P] Implement Gradle version catalog and `gradle.properties` resolver (file: `scripts/lib/detect-gradle-catalog.ts`, `scripts/lib/__tests__/detect-gradle-catalog.test.ts`, fixtures under `scripts/lib/__tests__/fixtures/detect/gradle-catalog/`) — covers FR-12 (depends on T003, T004)
+- [ ] T012 [P] Add `settings.gradle(.kts)` `pluginManagement` block as a version source in the orchestrator (file: `scripts/lib/detect-gradle-settings.ts`, `scripts/detect.ts`, fixtures under `scripts/lib/__tests__/fixtures/detect/gradle-plugin-management/`) — covers FR-13 (depends on T004, T007)
+- [ ] T013 [P] Add Maven external parent POM lookup via `~/.m2/repository` cache (file: `scripts/detect.ts`, `scripts/lib/maven-cache.ts`, fixtures under `scripts/lib/__tests__/fixtures/detect/maven-m2-cache/`) — covers FR-14 (depends on T005)
+- [ ] T014 Implement `--boot` override persistence and short-circuit (file: `scripts/lib/overrides.ts`, `scripts/detect.ts`, `scripts/lib/__tests__/overrides.test.ts`) — covers FR-15 (depends on T004)
+- [ ] T015 [P] Implement Gradle published version catalog fetch with cache-first lookup (file: `scripts/lib/detect-published-catalog.ts`, `scripts/detect.ts`, fixtures under `scripts/lib/__tests__/fixtures/detect/gradle-published-catalog/`) — covers FR-16 (depends on T011, T012); routes network calls through `scripts/resolve.ts`'s fetch client to preserve the single-network-boundary invariant
+- [ ] T016 Add `requires-build-tool` reason taxonomy and corresponding suggestion message; update `DetectResult` documentation accordingly (file: `scripts/lib/detect-types.ts`, `scripts/detect.ts`, fixtures under `scripts/lib/__tests__/fixtures/detect/requires-build-tool/`) — covers FR-17 (depends on T001, T011, T013)
 
 ## Dependencies
 
@@ -89,19 +95,23 @@ Data flow: each layer takes typed input and returns a typed result. Parsers neve
 T001
  ├── T002 [P] ─┐
  └── T003 [P] ─┤
-                ├── T004 ─┬── T005
-                │         ├── T006 [P]
-                │         ├── T007 [P]
-                │         └── T010
+                ├── T004 ──┬── T005 ──── T013 [P]
+                │          ├── T006 [P]
+                │          ├── T007 [P] ─┬── T012 [P]
+                │          ├── T010
+                │          ├── T011 [P] ─┬── T015 [P]
+                │          │              └── T016 (also depends on T013)
+                │          └── T014
                 ├── T008 [P]
                 └── T009 [P]
 ```
 
-The graph has two natural batches:
+The graph has four natural batches:
 
 1. **After T001 lands**: T002 and T003 run in parallel.
 2. **After T002 + T003 land**: T004, T008, T009 can all proceed (T004 is the bottleneck for the next batch; T008 and T009 are independent guard tasks that can run alongside).
-3. **After T004 lands**: T005, T006, T007 in parallel; T010 waits for all three.
+3. **After T004 lands**: T005, T006, T007, T011, T014 in parallel; T010 waits for T005/T006/T007.
+4. **After T005, T007, T011 land**: T012, T013, T015, T016 in parallel — these implement the FR-12~17 amendments (per ADR-0003).
 
 ## Key Files
 
@@ -117,12 +127,12 @@ The graph has two natural batches:
 
 Mapping to spec acceptance criteria:
 
-- **AC-1** (fixture matrix coverage): T002 covers the first 4 Maven rows; T005 adds the parent-POM row; T006 adds the two multi-module Maven rows; T003 covers the Gradle Groovy and Gradle Kotlin rows; T007 adds the Gradle multi-module subproject row; the `unsupported` (version catalog, malformed XML) and `not-found` (empty dir, no Boot at all) rows are covered jointly by T002 + T003 + T004.
-- **AC-2** (suggestion always present): asserted in every `unsupported`/`not-found` test in T002, T003, T004.
-- **AC-3** (CLI exit code mapping): asserted in T004's CLI tests (one process-spawn test per `kind`).
-- **AC-4** (90% branch coverage): enforced by T009 in CI.
-- **AC-5** (real-project spot check): T010 manual; recorded in PR description.
-- **AC-6** (no I/O imports in `scripts/lib/`): enforced by T008 ESLint rule; runs as part of `bun run lint`.
+- **AC-1** (fixture matrix coverage): T002 covers the first 4 Maven rows; T005 adds the sibling parent-POM row; T013 adds the external-parent `~/.m2` cache hit/miss rows (FR-14); T006 adds the two multi-module Maven rows; T003 covers the Gradle Groovy and Gradle Kotlin rows; T007 adds the Gradle multi-module subproject row; T011 adds the `libs.versions.toml` and `gradle.properties` rows (FR-12); T012 adds the `pluginManagement` row (FR-13); T015 adds the published-catalog row (FR-16); T014 adds the prior-override row (FR-15); T016 adds the `buildSrc/` row with `requires-build-tool` reason (FR-17); the `unsupported` (malformed XML) and `not-found` (empty dir, no Boot at all) rows are covered jointly by T002 + T003 + T004.
+- **AC-2** (suggestion always present): asserted in every `unsupported`/`not-found` test in T002, T003, T004, T011, T013, T015, T016. T016 additionally asserts that the suggestion mentions both the build-tool fallback (per ADR-0002) and `--boot` override.
+- **AC-3** (CLI exit code mapping): asserted in T004's CLI tests (one process-spawn test per `kind`); T014 adds tests for `--boot` and `--clear-override` flags.
+- **AC-4** (90% branch coverage): enforced by T009 in CI; expanded coverage targets to include the new `scripts/lib/detect-gradle-catalog.ts`, `detect-gradle-settings.ts`, `detect-published-catalog.ts`, `overrides.ts`, and `maven-cache.ts` modules.
+- **AC-5** (real-project spot check): T010 manual; recorded in PR description. With FR-12~17 in place, the spot-check should include at least one project using a version catalog and one using a `pluginManagement` block.
+- **AC-6** (no I/O imports in `scripts/lib/`): enforced by T008 ESLint rule; runs as part of `bun run lint`. The rule applies to all new lib modules introduced by T011, T012, T015, T016. T013/T014 (which need filesystem and network access) live in `scripts/detect.ts` (orchestrator) or use a lib helper that takes already-read content as input.
 
 Each task is "done" when its tests are green and the relevant SC is checked off in the spec.
 
@@ -132,7 +142,10 @@ Each task is "done" when its tests are green and the relevant SC is checked off 
 
 ## Decision Log
 
-(Implementation may add ADR references here. Likely candidate: "ADR: detect.ts multi-module walk depth bound" if the 5-hop limit needs revisiting.)
+- **2026-04-29 — ADR-0001 (Lazy Skill Loading via Hooks)**: This track's `detect.ts` is invoked by `sync.ts` from Claude Code hooks (`SessionStart`, `FileChanged`, `CwdChanged`) instead of from a one-shot `/spring:install` command. NFR-5 (≤100ms warm-cache detection) becomes load-bearing because detection runs on every session start and every build-file save.
+- **2026-04-29 — ADR-0002 (Three-Tier Version Detection)**: This track is Tier 1. FR-17 codifies the structured handoff to Tier 2 (build-tool fallback) for `buildSrc/`, settings plugins, and `${revision}` interpolation. Tier 2 implementation lives in a separate track; this track only marks the escalation in the result.
+- **2026-04-29 — ADR-0003 (Extended Static Parser Coverage)**: Adds FR-12 (version catalog + `gradle.properties`), FR-13 (`pluginManagement`), FR-14 (`~/.m2` external parent cache), FR-15 (`--boot` override persistence), FR-16 (published catalog fetch), and FR-17 (build-tool reason taxonomy). Tasks T011–T016 in this plan implement these FRs.
+- **Open**: 5-hop traversal bound (FR-5) for sibling parent POMs is unchanged; if real-world projects exceed this, file a follow-up ADR ("detect.ts multi-module walk depth bound") rather than silently raising the limit.
 
 ## Surprises & Discoveries
 
