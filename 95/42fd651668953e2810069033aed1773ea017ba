@@ -1,0 +1,24 @@
+.please/docs/tracks/active/plugin-scaffold-20260428/plan.md
+  8b2be5e47ef9b8ba 99
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "9542fd651668953e2810069033aed1773ea017ba",
+  "prompts": {
+    "8b2be5e47ef9b8ba": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "fd993c1c-97e7-4a58-b4d2-c22a8371fa96",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Minsu Lee",
+      "messages": [],
+      "total_additions": 1,
+      "total_deletions": 0,
+      "accepted_lines": 436,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/adbe40b2023b4e1f11cd836a0e710faa413878dd11363f3766194099f9bbfc98"
+    }
+  }
+}
