@@ -1,0 +1,39 @@
+{
+  "name": "@pleaseai/spring",
+  "type": "module",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Detect Spring versions from build files and install version-matched reference docs as Claude Code skills.",
+  "license": "Apache-2.0",
+  "homepage": "https://github.com/pleaseai/spring-plugin",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/pleaseai/spring-plugin.git"
+  },
+  "engines": {
+    "bun": ">=1.3.0"
+  },
+  "scripts": {
+    "test": "bun test",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint --max-warnings 0",
+    "lint:fix": "eslint --fix",
+    "prepare": "husky"
+  },
+  "dependencies": {
+    "consola": "3.4.2"
+  },
+  "devDependencies": {
+    "@pleaseai/eslint-config": "0.0.1",
+    "@types/bun": "1.3.13",
+    "eslint": "10.2.1",
+    "husky": "9.1.7",
+    "lint-staged": "16.4.0",
+    "typescript": "5.9.2"
+  },
+  "lint-staged": {
+    "*.{ts,tsx,js,mjs,cjs,json,md,yml,yaml}": [
+      "eslint --max-warnings 0 --no-warn-ignored --fix"
+    ]
+  }
+}

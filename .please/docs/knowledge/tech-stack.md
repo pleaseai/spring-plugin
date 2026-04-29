@@ -8,7 +8,7 @@
 - **What**: JavaScript runtime for executing plugin scripts.
 - **Why**: Fast startup (~10ms vs ~80ms for Node), built-in TypeScript without a bundler, native fetch/glob APIs.
 - **Where**: `scripts/*.ts` files invoked by skills and slash commands.
-- **Version target**: latest stable (≥1.1).
+- **Version target**: latest stable (≥1.3). The committed `bun.lock` uses Bun's text-format lockfile (default since 1.3); Bun 1.1.x cannot read it. `package.json` `engines.bun` enforces this floor.
 
 ### Node fallback
 - **Why**: Some users may not have Bun. Scripts should not rely on Bun-only globals (`Bun.file`, `Bun.serve`) unless the README documents a Bun requirement.
@@ -63,6 +63,15 @@ Skills (`skills/spring-installer/SKILL.md`) describe behavior and reference scri
 - **Library**: `turndown` for base HTML → Markdown conversion.
 - **Custom rules**: `scripts/lib/antora-rules.ts` handles Antora-specific patterns. Each rule has a fixture-based unit test.
 - **Output**: one Markdown file per Antora page, mirroring the upstream nav structure.
+
+## Logging
+
+### `consola`
+- **What**: structured CLI logger (https://github.com/unjs/consola).
+- **Why**: project-wide consistent log levels, `--verbose` / `--silent` toggling, prompt helpers, child loggers per module — all out of the box. Replaces the `log()` helper originally proposed in `ARCHITECTURE.md`. Tiny footprint, no native deps, ESM-first.
+- **Where**: orchestration scripts (`scripts/*.ts`); the I/O-free library layer (`scripts/lib/*`) must remain logger-free.
+- **Usage**: import the project-level instance from a single helper (e.g. `scripts/logger.ts` once introduced — outside the I/O-free `scripts/lib/` boundary), so log level / format are applied consistently. Tests should not import consola directly.
+- **Note**: this entry supersedes the "no logger library" line in `ARCHITECTURE.md`; that file will be revised in the `arch-md-v2` track.
 
 ## Distribution
 
