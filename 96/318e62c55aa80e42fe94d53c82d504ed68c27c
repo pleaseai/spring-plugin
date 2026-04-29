@@ -1,0 +1,26 @@
+.please/docs/tracks/active/build-file-detect-20260428/spec.md
+  2820ece447df382f 47-52,66-87,98,100,102-103,117-120
+.please/docs/tracks/active/build-file-detect-20260428/plan.md
+  2820ece447df382f 85-90,98-104,109,113-114,130-135,145-148
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "96318e62c55aa80e42fe94d53c82d504ed68c27c",
+  "prompts": {
+    "2820ece447df382f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e707443f-9235-45b6-9a58-faefaed4eed3",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Minsu Lee",
+      "messages": [],
+      "total_additions": 63,
+      "total_deletions": 33,
+      "accepted_lines": 63,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/81c5f9b5fdc7982ceff65ea3d9821ae576676f262cd19352f3d78132b4ad4deb"
+    }
+  }
+}
