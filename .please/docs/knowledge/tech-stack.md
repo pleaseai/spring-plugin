@@ -64,6 +64,15 @@ Skills (`skills/spring-installer/SKILL.md`) describe behavior and reference scri
 - **Custom rules**: `scripts/lib/antora-rules.ts` handles Antora-specific patterns. Each rule has a fixture-based unit test.
 - **Output**: one Markdown file per Antora page, mirroring the upstream nav structure.
 
+## Logging
+
+### `consola`
+- **What**: structured CLI logger (https://github.com/unjs/consola).
+- **Why**: project-wide consistent log levels, `--verbose` / `--silent` toggling, prompt helpers, child loggers per module — all out of the box. Replaces the `log()` helper originally proposed in `ARCHITECTURE.md`. Tiny footprint, no native deps, ESM-first.
+- **Where**: orchestration scripts (`scripts/*.ts`); the I/O-free library layer (`scripts/lib/*`) must remain logger-free.
+- **Usage**: import the project-level instance from a single helper (e.g. `scripts/lib/logger.ts` once introduced), so log level / format are applied consistently. Tests should not import consola directly.
+- **Note**: this entry supersedes the "no logger library" line in `ARCHITECTURE.md`; that file will be revised in the `arch-md-v2` track.
+
 ## Distribution
 
 ### Prebuilt archives
