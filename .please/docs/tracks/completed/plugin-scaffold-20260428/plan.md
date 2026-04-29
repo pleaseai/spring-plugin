@@ -109,3 +109,35 @@ Tied to spec Success Criteria (SC-1…SC-7):
 - **2026-04-29 / T009**: Spec named separate ESLint + Prettier tooling. After landing T004/T005, the org standard `@pleaseai/eslint-config` was adopted instead — it bundles formatting rules (no Prettier needed) and adds `eslint-plugin-package-json` for manifest hygiene. Net effect: simpler toolchain, fewer deps (4 removed: `prettier`, `@eslint/js`, `typescript-eslint`, `globals`), but reformatting (no semicolons, single quotes, sorted JSON keys) cascaded across every committed file. Caught only by adopting the standard early — adopting later would have produced a much noisier diff.
 - **2026-04-29 / CI**: `bun run lint` invokes the eslint binary which uses `#!/usr/bin/env node`. The Bun setup action does not install Node, so Ubuntu's default Node (~20) was active in CI. `eslint-flat-config-utils` calls `Object.groupBy` (Node 21+). Fix: add `actions/setup-node@v4` Node 22 step before Bun setup. **Implication for future tracks**: any tool that's actually a Node binary (eslint, tsc when invoked via npm script, etc.) needs an explicit Node setup in CI, even though we run "everything via bun" locally — Bun's `bun run script` does not transparently virtualize Node binaries.
 - **2026-04-29 / T010**: `ARCHITECTURE.md` § Cross-Cutting Concerns / Logging says "No logger library; use a tiny `log()` helper that respects `--verbose`." Choosing `consola` overrides that. The override lives in `tech-stack.md` for now; `ARCHITECTURE.md` is locked for this track per spec and will be revised in `arch-md-v2-20260428`. Future readers should treat `tech-stack.md` as authoritative until the arch revision lands.
+
+## Outcomes & Retrospective
+
+### What Was Shipped
+- `.claude-plugin/plugin.json` + layout placeholders (`commands/`, `skills/`, `scripts/`, `scripts/lib/`).
+- `package.json` + `tsconfig.json` (TypeScript strict + bundler resolution); `bun.lock` (text format) committed; `engines.bun >=1.3.0`.
+- Placeholder test (`scripts/lib/__tests__/scaffold.test.ts`) wiring `bun test`.
+- Unified linter+formatter via `@pleaseai/eslint-config` (no Prettier; T009 sanctioned deviation). `lint`, `lint:fix` scripts; `lint-staged` block.
+- Husky pre-commit hook (`.husky/pre-commit` → `bunx lint-staged`).
+- GitHub Actions CI (`.github/workflows/ci.yml`): Node 22 + Bun latest → typecheck → lint → test on PRs and pushes to main.
+- `consola@3.4.2` runtime dep (T010), documented in `tech-stack.md` § Logging — first usage in a future feature track.
+- README "Local Development" / "Project Layout" subsections; `workflow.md` Before-Committing line and CI flow updated.
+- `.gitignore` rules: `node_modules/`, `dist/`, `.idea/`, `.vscode/`, build artifacts, `.claude/scheduled_tasks.lock`.
+
+### What Went Well
+- **Single-PR slice-by-concern**. Eight tasks fit cleanly under one PR; the review surface stayed proportional to the actual decision surface.
+- **Pre-commit hook caught its own setup**. Husky fired during the T006 → T010 commits, exercising lint-staged five times before any human review — SC-7 verified live, not theoretically.
+- **Spec immutability honored**. ARCHITECTURE.md untouched; the v2 pivot stays in `tech-stack.md` and the dedicated `arch-md-v2-20260428` track.
+- **Adopting `@pleaseai/eslint-config` at the right moment**. Switching after T004/T005 (rather than before, or after merge) kept the reformat diff isolated to a single labeled commit.
+- **CI feedback loop tight**. Two CI failures (Node 21 missing `Object.groupBy`; pinned `engines.bun` floor mismatch) caught and resolved within minutes via the babysit-style background watch.
+
+### What Could Improve
+- **Spec→reality drift on lockfile**. The spec said `bun.lockb`. Bun 1.3 produces `bun.lock`. The mismatch surfaced at commit time, not during planning. Future scaffolding specs should leave lockfile naming open ("the lockfile produced by `bun install`") rather than nail down a filename that changes between Bun versions.
+- **Out-of-scope reformat near-miss**. The first `lint:fix` run after T009 reformatted `.please/` and `.claude/` files because the eslint ignore-list was too narrow. Caught and reverted, but the right move is to *start* with broad ignores covering anything authored outside the current track. Documented in T009 progress.
+- **Plan drift after sanctioned deviations**. T005 / T007 plan entries kept their original "format:check" wording after T009 removed the script. Caught only by the post-implementation `/review:code-review` pass. Future deviations should rewrite the affected task lines as the deviation lands, not after.
+- **Pre-existing aspirational README content**. `README.md` lines 329-342 still reference `bun run scripts/fetch.ts` (doesn't exist). Spec forbade rewriting, so we appended new sections instead. Leaves the doc bimodal until a docs track reconciles the two halves.
+
+### Tech Debt Created
+- **`consola` adopted but unused**. A runtime dep with zero call sites. Justified by org policy alignment and avoiding a noisy follow-up PR, but flagged here so the first feature track that lands code is responsible for either using it or removing it. → `tech-debt-tracker.md`.
+- **README aspirational content vs. current scaffolding mismatch**. The "## Development" section still describes a pipeline that doesn't exist (`scripts/fetch.ts`, prebuilt archives, etc.). A future docs track should reconcile after `arch-md-v2-20260428` lands. → `tech-debt-tracker.md`.
+- **`@pleaseai/eslint-config@0.0.1` is the only published version**. The repo's `package.json` shows 0.0.3 in source. We pinned to the published version, but a stale dep is a known-future-bump waiting to happen. Track when 0.0.2+ publishes.
+- **Bun-only globals not yet used; CI Node setup added defensively**. The CI's `actions/setup-node@v4` step exists only because eslint shells out to Node. If a future change moves linting to a true Bun-native path (e.g., `bun --bun eslint`), the Node setup becomes dead weight worth removing.
