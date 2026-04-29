@@ -22,7 +22,8 @@ This is a **docs-only** track. No source files are added, modified, or removed. 
 
 ### Sections to add
 
-- **§ Install Model (v2)** — new section explaining the install-time vs. runtime split, the data flow from detection through `@pleaseai/ask`, and the contract between the spring plugin and `@pleaseai/ask` (what shape the spring plugin's skill manifest takes, what `ask` is asked to do).
+- **§ Install Model (v2)** — new section explaining the install-time vs. runtime split, the data flow from detection through `@pleaseai/ask`, and the contract between the spring plugin and `@pleaseai/ask` (what shape the spring plugin's skill manifest takes, what `ask` is asked to do). Per ADR-0001, this section must additionally cover the **hook-driven sync** model: `SessionStart`, `FileChanged`, and `CwdChanged` hooks invoke `scripts/sync.ts` to populate a per-project version cache (`~/.cache/pleaseai-spring/projects/<hash>.json`) consumed by the thin `spring-ask` skill at query time. The `/spring:install --pre-warm` command is documented as an opt-in pre-warmer for offline / CI scenarios, not the default install path.
+- **§ Three-Tier Detection (Optional)** — short subsection (or paragraph in § Install Model (v2)) referencing ADR-0002's three-tier detection strategy: Bun static parsing (Tier 1) → opt-in build-tool fallback (Tier 2) → `--boot` user override (Tier 3). The body of the strategy lives in the ADR; ARCHITECTURE.md just summarizes the model and points to the ADR.
 
 ### Sections to leave untouched
 
@@ -41,7 +42,7 @@ This is a **docs-only** track. No source files are added, modified, or removed. 
 - [ ] **SC-2**: Internal consistency: every section in the revised `ARCHITECTURE.md` agrees with every other section. There are no places where one section describes the static pipeline and another describes the dynamic one. (Reviewer-verified; no automation.)
 - [ ] **SC-3**: No broken links or anchors inside `ARCHITECTURE.md`. Every `[text](#section)` resolves to an existing heading; every relative link to a sibling file (`README.md`, `.please/docs/knowledge/*.md`) points at a file that still exists. (Verified by `bun run lint:md` if a markdown linter is wired by the time this lands; otherwise manual.)
 - [ ] **SC-4**: References to `prebuilt/`, `antora-rules.ts`, "HTML → Markdown conversion", "nightly archive build", and `scripts/fetch.ts` (in the static-pipeline meaning) are removed from the document. Searching the post-revision file for any of these strings returns zero matches in the body — they may appear only inside an explicit "removed in v2" sidebar or migration note, if such a note is included.
-- [ ] **SC-5**: New § Install Model (v2) section exists and explains the install-time output (skill manifest shape) and runtime data flow through `@pleaseai/ask`.
+- [ ] **SC-5**: New § Install Model (v2) section exists and explains: (a) the thin `spring-ask` skill that delegates to `@pleaseai/ask` at query time; (b) the hook-driven sync model (`SessionStart`, `FileChanged`, `CwdChanged` → `scripts/sync.ts` → per-project cache) per ADR-0001; (c) the three-tier detection strategy per ADR-0002; (d) the relationship between `/spring:install --pre-warm` (opt-in) and the default zero-install path.
 - [ ] **SC-6**: PR description includes a short rationale paragraph explaining *why* the pivot was made (cost / maintenance tradeoff: live conversion is expensive; pre-builds drift; delegating to `ask` lets the plugin focus on detection/resolution and reuse a generic doc-fetching primitive). This is for reviewer context, not for inclusion in `ARCHITECTURE.md` itself.
 
 ## Constraints
@@ -58,7 +59,7 @@ This is a **docs-only** track. No source files are added, modified, or removed. 
 - `README.md` rewrite. A small update to a single `README.md` paragraph is allowed if it directly contradicts the new `ARCHITECTURE.md` content; anything larger is a separate track.
 - Documentation of the `@pleaseai/ask` plugin itself.
 - Migration guide for users (the plugin has not shipped yet; no users to migrate).
-- ADR creation. The athens-v2 pivot is large enough to warrant an ADR; that ADR is a separate track and is not blocked by this one (the ADR can reference the post-revision `ARCHITECTURE.md`).
+- ADR creation: superseded by 2026-04-29. ADRs 0001-0003 (lazy skill loading, three-tier version detection, extended static parser coverage) are landed under `.please/docs/decisions/` and this track now references them as authoritative input. No new ADRs are created by this track; the ARCHITECTURE.md revision summarizes the ADR decisions but does not duplicate their reasoning.
 - Diagram tooling changes (mermaid, plantuml, etc.). Stick with ASCII so the document stays inspectable in any viewer.
 
 ## Assumptions
@@ -70,5 +71,11 @@ This is a **docs-only** track. No source files are added, modified, or removed. 
 
 - `plugin-scaffold-20260428/spec.md` § Architectural direction (athens v2) — the original statement of the pivot
 - `build-file-detect-20260428/spec.md` § Overview — confirms the detect contract is invariant across pipelines
+- `hook-sync-20260429/spec.md` — sibling track implementing the hook-driven sync model that ARCHITECTURE.md must document.
+- `spring-ask-skill-20260429/spec.md` — sibling track implementing the thin delegating skill that ARCHITECTURE.md must document.
+- ADR-0001 (`.please/docs/decisions/0001-lazy-skill-loading-via-hooks.md`) — the authoritative source for the lazy install model summarized in § Install Model (v2).
+- ADR-0002 (`.please/docs/decisions/0002-three-tier-version-detection.md`) — the authoritative source for the three-tier detection strategy summarized in § Install Model (v2).
+- ADR-0003 (`.please/docs/decisions/0003-extended-static-parser-coverage.md`) — extended static parser coverage; ARCHITECTURE.md may reference but does not duplicate.
+- Claude Code hooks documentation (<https://code.claude.com/docs/en/hooks.md>) — referenced when describing hook events used by the v2 model.
 - Existing `ARCHITECTURE.md` (entire file is the input artifact for this track)
 - `@pleaseai/ask` plugin (referenced contract; do not document its internals)

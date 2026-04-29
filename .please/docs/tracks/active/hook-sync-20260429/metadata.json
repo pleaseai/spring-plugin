@@ -1,0 +1,11 @@
+{
+  "track_id": "hook-sync-20260429",
+  "type": "feature",
+  "status": "planned",
+  "created_at": "2026-04-29T00:00:00Z",
+  "updated_at": "2026-04-29T00:00:00Z",
+  "issue": "#9",
+  "pr": "https://github.com/pleaseai/spring-plugin/pull/8",
+  "project": "2",
+  "project_item_id": null
+}
