@@ -1,0 +1,30 @@
+.please/docs/decisions/0001-lazy-skill-loading-via-hooks.md
+  2820ece447df382f 1-176
+.please/docs/decisions/0002-three-tier-version-detection.md
+  2820ece447df382f 1-146
+.please/docs/decisions/0003-extended-static-parser-coverage.md
+  2820ece447df382f 1-205
+.please/docs/decisions/index.md
+  2820ece447df382f 7-9
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "822c8ffe7fe36692e97c23512396e09feb177efb",
+  "prompts": {
+    "2820ece447df382f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e707443f-9235-45b6-9a58-faefaed4eed3",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Minsu Lee",
+      "messages": [],
+      "total_additions": 563,
+      "total_deletions": 17,
+      "accepted_lines": 219,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/18e1c4a07bf448c9755f693dd29ae08e37546c3b59a068d5e191ca81f469a28b"
+    }
+  }
+}
