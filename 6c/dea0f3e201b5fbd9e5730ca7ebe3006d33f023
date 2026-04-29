@@ -1,0 +1,34 @@
+.please/docs/tracks/tech-debt-tracker.md
+  8b2be5e47ef9b8ba 9-12
+.please/docs/tracks/completed/plugin-scaffold-20260428/metadata.json
+  8b2be5e47ef9b8ba 4,6,8
+.please/docs/tracks/completed/plugin-scaffold-20260428/plan.md
+  8b2be5e47ef9b8ba 112-143
+.please/docs/tracks/completed/plugin-scaffold-20260428/spec.md
+  8b2be5e47ef9b8ba 1-99
+.please/docs/tracks.jsonl
+  8b2be5e47ef9b8ba 1
+.please/docs/knowledge/gotchas.md
+  8b2be5e47ef9b8ba 1-23
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "6cdea0f3e201b5fbd9e5730ca7ebe3006d33f023",
+  "prompts": {
+    "8b2be5e47ef9b8ba": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "fd993c1c-97e7-4a58-b4d2-c22a8371fa96",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Minsu Lee",
+      "messages": [],
+      "total_additions": 319,
+      "total_deletions": 150,
+      "accepted_lines": 719,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/8062798bb08b504a6d08fab5a311247fb018e533eb5b95be77bcb24680757b9b"
+    }
+  }
+}
