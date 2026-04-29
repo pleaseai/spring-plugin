@@ -107,12 +107,13 @@ bun run evals/spring/run.ts --baseline main
 ### Before Committing
 
 ```bash
-bun run lint && bun run typecheck && bun run format:check && bun test
+bun run lint && bun run typecheck && bun test
 ```
 
-A pre-commit hook (Husky + `lint-staged`) runs ESLint and Prettier on staged
-files automatically. The same checks run in CI on every PR via
-`.github/workflows/ci.yml` (typecheck → lint → format:check → test).
+Linting and formatting are unified through `@pleaseai/eslint-config` (no
+Prettier). Use `bun run lint:fix` to auto-fix style issues. A pre-commit hook
+(Husky + `lint-staged`) runs `eslint --fix` on staged files; the same checks
+run in CI on every PR via `.github/workflows/ci.yml` (typecheck → lint → test).
 
 ### Building Prebuilt Archives
 

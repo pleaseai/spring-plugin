@@ -350,15 +350,16 @@ After cloning, install dev dependencies and run the toolchain:
 ```bash
 bun install                # install dev deps from bun.lock
 bun run typecheck          # tsc --noEmit
-bun run lint               # ESLint flat config (max-warnings 0)
-bun run format:check       # Prettier --check
-bun run format             # Prettier --write (apply formatting)
+bun run lint               # eslint --max-warnings 0
+bun run lint:fix           # eslint --fix (auto-fix style + format)
 bun test                   # Bun test runner
 ```
 
-A pre-commit hook (Husky + `lint-staged`) runs ESLint and Prettier on staged
-TypeScript files automatically. The same checks run in CI on every PR via
-`.github/workflows/ci.yml`.
+Linting and formatting are unified through
+[`@pleaseai/eslint-config`](https://github.com/pleaseai/code-style/tree/main/packages/eslint-config)
+(built on `@antfu/eslint-config`) — no Prettier. A pre-commit hook
+(Husky + `lint-staged`) runs `eslint --fix` on staged files; the same checks
+run in CI on every PR via `.github/workflows/ci.yml`.
 
 ### Project Layout
 
@@ -368,7 +369,7 @@ commands/                      slash command entry points (placeholder)
 skills/                        auto-loaded skills (placeholder)
 scripts/                       implementation scripts (placeholder)
 └── lib/__tests__/             placeholder test confirming bun test wiring
-.github/workflows/ci.yml       typecheck / lint / format / test on PRs
+.github/workflows/ci.yml       typecheck / lint / test on PRs
 .husky/pre-commit              lint-staged on commit
 .please/                       workspace state (specs, plans, knowledge)
 ```

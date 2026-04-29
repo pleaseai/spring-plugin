@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   verify:
-    name: Verify (typecheck / lint / format / test)
+    name: Verify (typecheck / lint / test)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -34,9 +34,6 @@ jobs:
 
       - name: Lint
         run: bun run lint
-
-      - name: Format check
-        run: bun run format:check
 
       - name: Test
         run: bun test
