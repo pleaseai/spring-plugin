@@ -8,8 +8,8 @@
  * is the single place where filesystem access is permitted for detection.
  */
 
-import type { DetectResult, NotFoundResult, UnsupportedResult } from './lib/detect-types.ts'
-import { existsSync, readFileSync, statSync } from 'node:fs'
+import type { DetectedResult, DetectResult, NotFoundResult, UnsupportedResult } from './lib/detect-types.ts'
+import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path'
@@ -25,6 +25,16 @@ import {
 
 } from './lib/detect-types.ts'
 import { mavenCachePath } from './lib/maven-cache.ts'
+import {
+  clearOverride,
+  getOverride,
+  OVERRIDES_CACHE_SUBDIR,
+  OVERRIDES_FILENAME,
+  parseOverridesFile,
+  projectKey,
+  serializeOverrides,
+  setOverride,
+} from './lib/overrides.ts'
 
 const POM = 'pom.xml'
 const GRADLE_KTS = 'build.gradle.kts'
@@ -39,11 +49,21 @@ const MAX_PARENT_HOPS = 5
 
 /** Test-only override for the local Maven repository (FR-14). */
 const M2_ENV_OVERRIDE = 'PLEASEAI_SPRING_M2_ROOT'
+/** Test-only override for the override-store home directory (FR-15). */
+const CACHE_HOME_ENV_OVERRIDE = 'PLEASEAI_SPRING_CACHE_HOME'
 
 const WIN_SEP_RE = /\\/g
 
 function getM2Root(): string {
   return process.env[M2_ENV_OVERRIDE] ?? join(homedir(), '.m2', 'repository')
+}
+
+function getCacheHome(): string {
+  return process.env[CACHE_HOME_ENV_OVERRIDE] ?? homedir()
+}
+
+function getOverridesPath(): string {
+  return join(getCacheHome(), OVERRIDES_CACHE_SUBDIR, OVERRIDES_FILENAME)
 }
 
 /**
@@ -56,6 +76,11 @@ export async function detect(projectDir: string): Promise<DetectResult> {
   if (!isExistingDirectory(projectDir)) {
     return notFound(projectDir)
   }
+
+  // FR-15: an existing --boot override short-circuits detection.
+  const overrideHit = readOverrideForProject(projectDir)
+  if (overrideHit)
+    return overrideHit
 
   // Maven takes precedence: if pom.xml exists, treat the project as Maven.
   // Build files of both types are unusual; downstream tracks may revisit this rule.
@@ -72,6 +97,54 @@ export async function detect(projectDir: string): Promise<DetectResult> {
   }
 
   return notFound(projectDir)
+}
+
+/**
+ * Read the persisted `--boot` override for {@link projectDir}, if any. Returns
+ * a synthetic `DetectedResult` so downstream callers see the same shape as
+ * file-derived detection.
+ */
+function readOverrideForProject(projectDir: string): DetectedResult | undefined {
+  const path = getOverridesPath()
+  if (!existsSync(path))
+    return undefined
+  const store = parseOverridesFile(readFileSync(path, 'utf8'))
+  const entry = getOverride(store, projectKey(resolve(projectDir)))
+  if (!entry)
+    return undefined
+  return {
+    kind: 'detected',
+    version: entry.version,
+    source: {
+      file: path,
+      locator: `--boot override (granted ${entry.grantedAt})`,
+    },
+  }
+}
+
+/**
+ * Persist a `--boot` override for {@link projectDir}. Creates the cache
+ * directory if needed.
+ */
+export function grantBootOverride(projectDir: string, version: string): void {
+  const path = getOverridesPath()
+  mkdirSync(dirname(path), { recursive: true })
+  const previous = existsSync(path) ? parseOverridesFile(readFileSync(path, 'utf8')) : {}
+  const next = setOverride(previous, projectKey(resolve(projectDir)), version, new Date().toISOString())
+  writeFileSync(path, serializeOverrides(next))
+}
+
+/**
+ * Revoke a `--boot` override for {@link projectDir}. No-op when the project
+ * has no recorded override.
+ */
+export function clearBootOverride(projectDir: string): void {
+  const path = getOverridesPath()
+  if (!existsSync(path))
+    return
+  const previous = parseOverridesFile(readFileSync(path, 'utf8'))
+  const next = clearOverride(previous, projectKey(resolve(projectDir)))
+  writeFileSync(path, serializeOverrides(next))
 }
 
 /**
@@ -335,17 +408,53 @@ function internalErrorResult(err: unknown): UnsupportedResult {
 
 // ------------------------------ CLI -----------------------------------------
 
-const USAGE = 'usage: bun run scripts/detect.ts <project-dir>'
+const USAGE = 'usage: bun run scripts/detect.ts <project-dir> [--boot <version> | --clear-override]'
+
+interface ParsedArgs {
+  projectDir: string
+  boot?: string
+  clear?: boolean
+}
+
+function parseArgs(argv: string[]): ParsedArgs | { error: string } {
+  let projectDir: string | undefined
+  let boot: string | undefined
+  let clear = false
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i]
+    if (a === '--boot') {
+      boot = argv[++i]
+      if (!boot)
+        return { error: '--boot requires a version argument' }
+    }
+    else if (a === '--clear-override') {
+      clear = true
+    }
+    else if (a && !a.startsWith('--')) {
+      projectDir ??= a
+    }
+    else {
+      return { error: `unknown argument: ${a}` }
+    }
+  }
+  if (!projectDir)
+    return { error: 'missing <project-dir>' }
+  return { projectDir, boot, clear }
+}
 
 async function cli(argv: string[]): Promise<number> {
-  const dir = argv[0]
-  if (!dir) {
-    process.stderr.write(`${USAGE}\n`)
+  const parsed = parseArgs(argv)
+  if ('error' in parsed) {
+    process.stderr.write(`${parsed.error}\n${USAGE}\n`)
     return 2
   }
+  if (parsed.clear)
+    clearBootOverride(parsed.projectDir)
+  if (parsed.boot)
+    grantBootOverride(parsed.projectDir, parsed.boot)
   let result: DetectResult
   try {
-    result = await detect(dir)
+    result = await detect(parsed.projectDir)
   }
   catch (err) {
     // FR-11: exit 2 only for unexpected internal errors.
