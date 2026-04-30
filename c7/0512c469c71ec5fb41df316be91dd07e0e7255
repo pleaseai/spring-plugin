@@ -1,0 +1,34 @@
+scripts/lib/__tests__/maven-cache.test.ts
+  51c6d0d89686e73c 1-27
+scripts/__tests__/detect-maven-m2-cache.test.ts
+  51c6d0d89686e73c 1-203
+scripts/detect.ts
+  51c6d0d89686e73c 13,15,17,27,40-42,45-48,227,230-236,238-256,307-318
+.please/docs/tracks/active/build-file-detect-20260428/plan.md
+  51c6d0d89686e73c 87,152
+scripts/lib/maven-cache.ts
+  51c6d0d89686e73c 1-32
+scripts/__tests__/detect-maven-parent.test.ts
+  51c6d0d89686e73c 4,100,102,104,109-122
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "c70512c469c71ec5fb41df316be91dd07e0e7255",
+  "prompts": {
+    "51c6d0d89686e73c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4cea1ed7-9893-4fce-8cb6-33bd8afd16b0",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Minsu Lee",
+      "messages": [],
+      "total_additions": 339,
+      "total_deletions": 19,
+      "accepted_lines": 665,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/d407a40f80893b0889dca6be4bf30e62636b496ee565004e0e9757719e0ff1c6"
+    }
+  }
+}
