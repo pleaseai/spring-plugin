@@ -72,7 +72,7 @@ Data flow: each layer takes typed input and returns a typed result. Parsers neve
 
 ## Tasks
 
-- [ ] T001 Define `DetectResult` and `DetectSource` types (file: `scripts/lib/detect-types.ts`)
+- [x] T001 Define `DetectResult` and `DetectSource` types (file: `scripts/lib/detect-types.ts`)
 - [ ] T002 [P] Implement Maven parser with `fast-xml-parser` for spring-boot-starter-parent + spring-boot-dependencies BOM cases (file: `scripts/lib/detect-maven.ts`, `scripts/lib/__tests__/detect-maven.test.ts`, fixtures under `scripts/lib/__tests__/fixtures/detect/maven/`) (depends on T001)
 - [ ] T003 [P] Implement Gradle parser with regex for Groovy + Kotlin DSL (plugins block, apply plugin + ext) (file: `scripts/lib/detect-gradle.ts`, `scripts/lib/__tests__/detect-gradle.test.ts`, fixtures under `scripts/lib/__tests__/fixtures/detect/gradle/`) (depends on T001)
 - [ ] T004 Implement Domain orchestrator + CLI for single-file detection (Maven and Gradle, no multi-module yet) (file: `scripts/detect.ts`, `scripts/__tests__/detect.test.ts`) (depends on T002, T003)
@@ -138,7 +138,7 @@ Each task is "done" when its tests are green and the relevant SC is checked off 
 
 ## Progress
 
-(Implementation will fill this section.)
+- 2026-04-30 — T001 ✅ `DetectResult` / `DetectSource` types + type guards landed in `scripts/lib/detect-types.ts`. Added `REQUIRES_BUILD_TOOL` and `SUGGEST_BOOT_OVERRIDE` literals to enable consistent attribution across FR-9, FR-15, FR-17.
 
 ## Decision Log
 
