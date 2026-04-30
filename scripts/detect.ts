@@ -10,7 +10,7 @@
 
 import type { DetectResult, NotFoundResult, UnsupportedResult } from './lib/detect-types.ts'
 import { existsSync, readFileSync, statSync } from 'node:fs'
-import { join } from 'node:path'
+import { dirname, isAbsolute, join, relative, resolve } from 'node:path'
 
 import process from 'node:process'
 import { parseGradle } from './lib/detect-gradle.ts'
@@ -24,6 +24,11 @@ import {
 const POM = 'pom.xml'
 const GRADLE_KTS = 'build.gradle.kts'
 const GRADLE_GROOVY = 'build.gradle'
+
+/** FR-5: maximum number of parent POMs to walk before giving up. */
+const MAX_PARENT_HOPS = 5
+
+const WIN_SEP_RE = /\\/g
 
 /**
  * Detect the declared Spring Boot version of a project.
@@ -40,9 +45,7 @@ export async function detect(projectDir: string): Promise<DetectResult> {
   // Build files of both types are unusual; downstream tracks may revisit this rule.
   const pomPath = join(projectDir, POM)
   if (existsSync(pomPath)) {
-    const xml = readFileSync(pomPath, 'utf8')
-    const { result } = parsePom(xml, POM)
-    return result
+    return resolveMaven(projectDir, pomPath)
   }
 
   for (const fname of [GRADLE_KTS, GRADLE_GROOVY]) {
@@ -63,6 +66,55 @@ function isExistingDirectory(p: string): boolean {
   }
   catch {
     return false
+  }
+}
+
+/**
+ * Resolve a Maven project's Spring Boot version, walking parent POMs (FR-5)
+ * up to {@link MAX_PARENT_HOPS} hops via `<parent><relativePath>`.
+ *
+ * @param projectDir Project root directory (used as the base for source paths).
+ * @param initialPath Absolute path to the leaf `pom.xml`.
+ */
+function resolveMaven(projectDir: string, initialPath: string): DetectResult {
+  let currentAbs = initialPath
+  let currentRel = POM
+  for (let hop = 0; hop < MAX_PARENT_HOPS; hop++) {
+    const xml = readFileSync(currentAbs, 'utf8')
+    const { result, hints } = parsePom(xml, currentRel)
+    if (result.kind === 'detected' || result.kind === 'unsupported') {
+      return result
+    }
+    if (!hints.parent || !hints.parent.relativePath) {
+      // Sibling parent traversal exhausted. T013 will add ~/.m2 cache fallback.
+      return result
+    }
+    const candidate = resolve(dirname(currentAbs), hints.parent.relativePath)
+    if (!existsSync(candidate)) {
+      return result
+    }
+    currentAbs = candidate
+    // Compute POSIX-relative path from project root for source attribution.
+    currentRel = posixRelative(projectDir, currentAbs)
+  }
+  // Exhausted hop budget without finding a version.
+  return parentTraversalExceeded(currentRel)
+}
+
+function posixRelative(from: string, to: string): string {
+  const rel = relative(from, to)
+  // `relative` uses platform separator; FR-8 contract is POSIX. Normalize.
+  if (isAbsolute(rel))
+    return rel
+  return rel.split(WIN_SEP_RE).join('/')
+}
+
+function parentTraversalExceeded(lastFile: string): UnsupportedResult {
+  return {
+    kind: 'unsupported',
+    reason: `Maven parent traversal exceeded ${MAX_PARENT_HOPS} hops without finding a Spring Boot version`,
+    suggestion: SUGGEST_BOOT_OVERRIDE,
+    source: { file: lastFile, locator: `parent traversal stopped after ${MAX_PARENT_HOPS} hops` },
   }
 }
 
