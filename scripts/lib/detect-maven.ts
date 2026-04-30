@@ -3,6 +3,7 @@ import type { DetectedResult, DetectResult, DetectSource, NotFoundResult, Unsupp
 import { XMLParser } from 'fast-xml-parser'
 import {
 
+  REQUIRES_BUILD_TOOL,
   SUGGEST_BOOT_OVERRIDE,
 
 } from './detect-types.ts'
@@ -77,6 +78,17 @@ export function parsePom(xml: string, file: string): MavenParseOutput {
           file,
           'spring-boot-starter-parent declared without <version>',
           'parent (no version)',
+        ),
+        hints: {},
+      }
+    }
+    if (containsInterpolation(parent.version)) {
+      // FR-17: ${revision} or ${...} interpolation requires Maven evaluation.
+      return {
+        result: requiresBuildTool(
+          file,
+          `spring-boot-starter-parent <version> uses Maven property interpolation (${parent.version})`,
+          'spring-boot-starter-parent in <parent>',
         ),
         hints: {},
       }
@@ -202,4 +214,25 @@ function notFound(file: string): NotFoundResult {
 function malformed(file: string, err: unknown): UnsupportedResult {
   const reason = err instanceof Error ? `malformed XML: ${err.message}` : 'malformed XML'
   return unsupported(file, reason, 'pom.xml parse error')
+}
+
+const INTERPOLATION_RE = /\$\{[^}]+\}/
+
+function containsInterpolation(value: string): boolean {
+  return INTERPOLATION_RE.test(value)
+}
+
+/**
+ * FR-17: structured handoff to the build-tool fallback (ADR-0002). The reason
+ * always contains the literal token {@link REQUIRES_BUILD_TOOL} so callers can
+ * distinguish "we cannot parse this without code execution" from generic
+ * unsupported-pattern responses.
+ */
+function requiresBuildTool(file: string, detail: string, locator: string): UnsupportedResult {
+  return {
+    kind: 'unsupported',
+    reason: `${REQUIRES_BUILD_TOOL}: ${detail}`,
+    suggestion: `This pattern needs Maven/Gradle evaluation (build-tool fallback per ADR-0002). ${SUGGEST_BOOT_OVERRIDE}`,
+    source: { file, locator },
+  }
 }

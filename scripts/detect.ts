@@ -21,6 +21,7 @@ import { parseGradle } from './lib/detect-gradle.ts'
 import { parsePom } from './lib/detect-maven.ts'
 import {
 
+  REQUIRES_BUILD_TOOL,
   SUGGEST_BOOT_OVERRIDE,
 
 } from './lib/detect-types.ts'
@@ -205,7 +206,55 @@ function resolveGradle(projectDir: string, rootBuildPath: string, rootRel: strin
   if (pmResult)
     return pmResult
 
-  return walkGradleSubprojects(projectDir, result)
+  const subprojectsResult = walkGradleSubprojects(projectDir, result)
+  if (subprojectsResult.kind === 'detected')
+    return subprojectsResult
+
+  // FR-17: escalate patterns that fundamentally need build-tool evaluation.
+  const buildToolEscalation = detectGradleRequiresBuildTool(projectDir)
+  if (buildToolEscalation)
+    return buildToolEscalation
+
+  return subprojectsResult
+}
+
+/**
+ * FR-17: detect Gradle patterns that fundamentally require build-tool evaluation
+ * — `buildSrc/`, project-local init scripts, settings plugins (apply outside
+ * pluginManagement). Returns `undefined` when no escalation pattern is found.
+ */
+function detectGradleRequiresBuildTool(projectDir: string): UnsupportedResult | undefined {
+  const triggers: string[] = []
+  if (existsSync(join(projectDir, 'buildSrc')))
+    triggers.push('buildSrc/ directory')
+  for (const initName of ['init.gradle', 'init.gradle.kts']) {
+    if (existsSync(join(projectDir, initName)))
+      triggers.push(initName)
+  }
+  const settingsRel = findSettingsFile(projectDir)
+  if (settingsRel) {
+    const src = readFileSync(join(projectDir, settingsRel), 'utf8')
+    if (settingsAppliesPlugin(src))
+      triggers.push(`settings plugin in ${settingsRel}`)
+  }
+  if (triggers.length === 0)
+    return undefined
+  return requiresBuildToolResult(triggers, settingsRel ?? '')
+}
+
+const SETTINGS_APPLY_RE = /^\s*apply\s*[<(]/m
+
+function settingsAppliesPlugin(source: string): boolean {
+  return SETTINGS_APPLY_RE.test(source)
+}
+
+function requiresBuildToolResult(triggers: string[], file: string): UnsupportedResult {
+  return {
+    kind: 'unsupported',
+    reason: `${REQUIRES_BUILD_TOOL}: Gradle pattern requires evaluation — ${triggers.join(', ')}`,
+    suggestion: `These patterns need Gradle evaluation (build-tool fallback per ADR-0002). ${SUGGEST_BOOT_OVERRIDE}`,
+    ...(file ? { source: { file, locator: 'requires-build-tool escalation' } } : {}),
+  }
 }
 
 /**
