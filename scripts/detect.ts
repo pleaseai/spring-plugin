@@ -8,17 +8,25 @@
  * is the single place where filesystem access is permitted for detection.
  */
 
+import type { PublishedCatalogRef } from './lib/detect-published-catalog.ts'
 import type { DetectedResult, DetectResult, NotFoundResult, UnsupportedResult } from './lib/detect-types.ts'
-import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
+
 import { homedir } from 'node:os'
-
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path'
-import process from 'node:process'
 
+import process from 'node:process'
 import { resolveCatalogVersion, resolveProperty } from './lib/detect-gradle-catalog.ts'
 import { parseSettingsIncludes, parseSettingsPluginManagement } from './lib/detect-gradle-settings.ts'
 import { parseGradle } from './lib/detect-gradle.ts'
 import { parsePom } from './lib/detect-maven.ts'
+import {
+  gradleCacheCatalogDir,
+  m2CatalogPath,
+  parsePublishedCatalogs,
+  pleaseaiCatalogCachePath,
+
+} from './lib/detect-published-catalog.ts'
 import {
 
   REQUIRES_BUILD_TOOL,
@@ -65,6 +73,14 @@ function getCacheHome(): string {
 
 function getOverridesPath(): string {
   return join(getCacheHome(), OVERRIDES_CACHE_SUBDIR, OVERRIDES_FILENAME)
+}
+
+function getGradleCachesRoot(): string {
+  return process.env.PLEASEAI_SPRING_GRADLE_CACHES ?? join(homedir(), '.gradle', 'caches')
+}
+
+function getPleaseaiCatalogRoot(): string {
+  return join(getCacheHome(), '.cache', 'pleaseai-spring')
 }
 
 /**
@@ -163,7 +179,7 @@ function resolveGradle(projectDir: string, rootBuildPath: string, rootRel: strin
     return result
   }
 
-  // FR-12: catalog reference
+  // FR-12: catalog reference (project-local libs.versions.toml)
   if (hints.catalogReference) {
     const catalogAbs = join(projectDir, VERSION_CATALOG)
     if (existsSync(catalogAbs)) {
@@ -180,6 +196,10 @@ function resolveGradle(projectDir: string, rootBuildPath: string, rootRel: strin
         }
       }
     }
+    // FR-16: fall back to published catalog (cache-first lookup).
+    const publishedHit = resolvePublishedCatalog(projectDir, hints.catalogReference.aliasPath)
+    if (publishedHit)
+      return publishedHit
   }
 
   // FR-12: property interpolation
@@ -255,6 +275,87 @@ function requiresBuildToolResult(triggers: string[], file: string): UnsupportedR
     suggestion: `These patterns need Gradle evaluation (build-tool fallback per ADR-0002). ${SUGGEST_BOOT_OVERRIDE}`,
     ...(file ? { source: { file, locator: 'requires-build-tool escalation' } } : {}),
   }
+}
+
+/**
+ * FR-16: cache-first published catalog lookup.
+ *
+ * Reads `versionCatalogs.create(...).from("g:a:v")` declarations from
+ * `settings.gradle(.kts)` and probes the local Maven, Gradle, and plugin caches
+ * for the matching `.toml`. On hit, runs the existing `[versions]` resolver
+ * against the catalog file. On total miss, returns `undefined` so the
+ * orchestrator can continue with the next resolution step.
+ *
+ * **Network fetch is intentionally not implemented in this track** — the
+ * single-network-boundary lives in `scripts/resolve.ts` (downstream).
+ */
+function resolvePublishedCatalog(projectDir: string, aliasPath: string): DetectResult | undefined {
+  const settingsRel = findSettingsFile(projectDir)
+  if (!settingsRel)
+    return undefined
+  const settingsSrc = readFileSync(join(projectDir, settingsRel), 'utf8')
+  const catalogs = parsePublishedCatalogs(settingsSrc)
+  if (catalogs.length === 0)
+    return undefined
+  for (const cat of catalogs) {
+    const tomlPath = locatePublishedCatalogToml(cat)
+    if (!tomlPath)
+      continue
+    const tomlSrc = readFileSync(tomlPath, 'utf8')
+    const v = resolveCatalogVersion(tomlSrc, aliasPath)
+    if (v) {
+      return {
+        kind: 'detected',
+        version: v,
+        source: {
+          file: tomlPath,
+          locator: `published catalog '${cat.alias}' (${cat.group}:${cat.artifact}:${cat.version}), alias '${aliasPath}'`,
+        },
+      }
+    }
+  }
+  return undefined
+}
+
+/**
+ * Probe the standard caches for a published catalog `.toml` artifact.
+ * Search order: ~/.m2/repository → ~/.gradle/caches → ~/.cache/pleaseai-spring.
+ */
+function locatePublishedCatalogToml(cat: PublishedCatalogRef): string | undefined {
+  const m2 = m2CatalogPath(cat.group, cat.artifact, cat.version, getM2Root())
+  if (existsSync(m2))
+    return m2
+  const gradleDir = gradleCacheCatalogDir(cat.group, cat.artifact, cat.version, getGradleCachesRoot())
+  if (existsSync(gradleDir)) {
+    const found = findInHashedDir(gradleDir, `${cat.artifact}-${cat.version}.toml`)
+    if (found)
+      return found
+  }
+  const owned = pleaseaiCatalogCachePath(cat.group, cat.artifact, cat.version, getPleaseaiCatalogRoot())
+  if (existsSync(owned))
+    return owned
+  return undefined
+}
+
+/**
+ * Gradle's hashed-artifact layout puts the file under a `<sha1>/` subdirectory
+ * of the artifact's version directory. Scan one level deep for the artifact
+ * filename; return the first match (Gradle never stores duplicates here).
+ */
+function findInHashedDir(parent: string, filename: string): string | undefined {
+  let entries: string[]
+  try {
+    entries = readdirSync(parent)
+  }
+  catch {
+    return undefined
+  }
+  for (const entry of entries) {
+    const candidate = join(parent, entry, filename)
+    if (existsSync(candidate))
+      return candidate
+  }
+  return undefined
 }
 
 /**
