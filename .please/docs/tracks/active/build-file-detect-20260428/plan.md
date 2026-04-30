@@ -79,7 +79,7 @@ Data flow: each layer takes typed input and returns a typed result. Parsers neve
 - [ ] T005 Add Maven parent POM inheritance traversal (≤5 hops, follows `<parent><relativePath>`) (file: `scripts/detect.ts`, fixtures under `scripts/lib/__tests__/fixtures/detect/maven-parent/`) (depends on T004)
 - [ ] T006 [P] Add Maven multi-module walk (scan `<modules>` for first child with declared Boot version) (file: `scripts/detect.ts`, fixtures under `scripts/lib/__tests__/fixtures/detect/maven-multimodule/`) (depends on T004)
 - [ ] T007 [P] Add Gradle multi-module walk (parse `settings.gradle(.kts)` `include(...)` and scan one level of subprojects) (file: `scripts/detect.ts`, fixtures under `scripts/lib/__tests__/fixtures/detect/gradle-multimodule/`) (depends on T004)
-- [ ] T008 [P] Add ESLint `no-restricted-imports` rule that bans `node:fs`, `node:net`, `node:http`, `bun` from `scripts/lib/**/*.ts` (file: `eslint.config.js`) (depends on T002, T003)
+- [x] T008 [P] Add ESLint `no-restricted-imports` rule that bans `node:fs`, `node:net`, `node:http`, `bun` from `scripts/lib/**/*.ts` (file: `eslint.config.js`) (depends on T002, T003)
 - [ ] T009 [P] Wire `bun test --coverage` into CI and add a coverage threshold check that fails CI if branch coverage of `scripts/lib/detect-*.ts` falls below 90% (file: `.github/workflows/ci.yml`, optional `bunfig.toml`) (depends on T002, T003)
 - [ ] T010 Spot-check on three real Spring sample projects, record versions and exit codes in PR description (manual; no file change) (depends on T005, T006, T007)
 - [ ] T011 [P] Implement Gradle version catalog and `gradle.properties` resolver (file: `scripts/lib/detect-gradle-catalog.ts`, `scripts/lib/__tests__/detect-gradle-catalog.test.ts`, fixtures under `scripts/lib/__tests__/fixtures/detect/gradle-catalog/`) — covers FR-12 (depends on T003, T004)
@@ -142,6 +142,7 @@ Each task is "done" when its tests are green and the relevant SC is checked off 
 - 2026-04-30 — T002 ✅ Maven parser `parsePom(xml, file)` covers FR-1 + FR-2; emits `MavenHints` (parent + modules) for downstream traversal (T005, T006, T013). Pure function, fast-xml-parser-backed, malformed XML → `unsupported`. 10 fixture-driven tests.
 - 2026-04-30 — T003 ✅ Gradle parser `parseGradle(source, file)` covers FR-3 + FR-4 across plugins blocks (Groovy/Kotlin), apply plugin + ext, classpath, and `ext['spring-boot.version']`. Emits `GradleHints` (pluginReferenced, catalogReference for FR-12, propertyReference for FR-12 / FR-17 inputs). 11 fixture-driven tests.
 - 2026-04-30 — T004 ✅ Domain orchestrator `detect(projectDir)` + CLI in `scripts/detect.ts`. Maven precedes Gradle when both build files are present. CLI emits JSON to stdout with exit codes per FR-11 (0 detected / 1 unsupported|not-found / 2 internal). 13 tests including 4 `Bun.spawn`-based CLI exit-code tests.
+- 2026-04-30 — T008 ✅ ESLint `no-restricted-imports` Library Layer guard added to `eslint.config.js` (AC-6, NFR-1). Bans node:fs / fs/promises / node:net / node:http / node:https / bun from `scripts/lib/**/*.ts` (excluding `__tests__/`). 6 ESLint-stdin smoke tests verify the rule fires for violations and skips exempt paths.
 
 ## Decision Log
 
