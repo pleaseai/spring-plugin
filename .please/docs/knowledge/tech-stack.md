@@ -42,9 +42,9 @@ Skills (`skills/spring-installer/SKILL.md`) describe behavior and reference scri
 - **Edge cases**: version catalogs (`libs.versions.toml`), `ext` blocks, `subprojects { }`. Handle the common cases; document fallbacks (`/spring:install --boot 3.5`) for the rest.
 
 ### Maven (`pom.xml`)
-- **Approach**: XML parsing via `fast-xml-parser` or built-in DOM utility.
+- **Approach**: XML parsing via `fast-xml-parser` (chosen — pure JS, no native deps).
 - **Source**: Look for `spring-boot-starter-parent` or `spring-boot-dependencies` in dependency management.
-- **Inheritance**: Resolve parent POM if `<relativePath>` or Maven Central reference exists.
+- **Inheritance**: Resolve parent POM via `<relativePath>` (≤5-hop bound) and the local `~/.m2/repository` cache for external parents. `${...}` interpolation is rejected with the FR-17 `requires-build-tool` reason.
 
 ## BOM Resolution
 
@@ -52,6 +52,11 @@ Skills (`skills/spring-installer/SKILL.md`) describe behavior and reference scri
 - **URL pattern**: `https://repo1.maven.org/maven2/org/springframework/boot/spring-boot-dependencies/{version}/spring-boot-dependencies-{version}.pom`
 - **Parse**: extract `<properties>` for component versions (`spring-framework.version`, `spring-security.version`, etc.).
 - **Cache**: store resolved BOM under `~/.cache/pleaseai-spring/boms/{version}.json` to avoid re-fetching.
+
+### Plugin-owned cache layout (`~/.cache/pleaseai-spring/`)
+- `boms/{version}.json` — resolved Spring component versions per Boot version (BOM resolver track).
+- `catalogs/{artifact}-{version}.toml` — published Gradle version catalogs (FR-16) populated by future fetch flow; checked after `~/.m2` and `~/.gradle/caches`.
+- `overrides.json` — per-project `--boot` overrides (FR-15), keyed by `sha256(absolute project_dir)`.
 
 ## Documentation Conversion
 
@@ -88,7 +93,7 @@ Skills (`skills/spring-installer/SKILL.md`) describe behavior and reference scri
 ## CI/CD
 
 ### GitHub Actions
-- **Lint + test** on every PR: `bun run lint`, `bun test`.
+- **Lint + test + coverage** on every PR: `bun run typecheck`, `bun run lint`, `bun run test:coverage`, then `bun run coverage:check` enforces ≥90% line coverage on `scripts/lib/detect-*.ts`. lcov report uploaded as a CI artifact.
 - **Eval suite** on PRs touching `scripts/lib/`: `bun run evals/spring/run.ts` with pass-rate delta in PR comment.
 - **Nightly archive build** for new upstream releases.
 - **Release** via `release-please` based on Conventional Commits.
