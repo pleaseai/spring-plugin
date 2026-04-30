@@ -62,3 +62,55 @@ const LEADING_COLON_RE = /^:/
 function pathToSubdir(path: string): string {
   return path.replace(LEADING_COLON_RE, '').split(':').join('/')
 }
+
+const PLUGIN_MANAGEMENT_KEYWORD = 'pluginManagement'
+const SPRING_BOOT_VERSION_RE
+  = /\bid\s*(?:\(\s*)?['"]org\.springframework\.boot['"]\s*(?:\)\s*)?version\s+['"]([^'"]+)['"]/
+
+/**
+ * FR-13: extract a literal Spring Boot version from a `pluginManagement { plugins { ... } }`
+ * block in `settings.gradle(.kts)`. Returns `undefined` when the block is missing,
+ * malformed, or when the version is a property interpolation (`"${name}"`).
+ *
+ * Property interpolations are intentionally not resolved here — the orchestrator
+ * handles those via `gradle.properties` (FR-12 / T011) once it sees a hint elsewhere.
+ */
+export function parseSettingsPluginManagement(source: string): string | undefined {
+  const block = extractPluginManagementBlock(source)
+  if (!block)
+    return undefined
+  const m = SPRING_BOOT_VERSION_RE.exec(block)
+  if (!m || !m[1])
+    return undefined
+  const version = m[1]
+  if (version.includes('$') || version.startsWith('libs.'))
+    return undefined
+  return version
+}
+
+/**
+ * Extract the contents of the first balanced `pluginManagement { ... }` block.
+ * Naive brace matcher — does not understand strings or comments. Sufficient for
+ * the conservative regex matching done downstream.
+ */
+function extractPluginManagementBlock(source: string): string | undefined {
+  const idx = source.indexOf(PLUGIN_MANAGEMENT_KEYWORD)
+  if (idx === -1)
+    return undefined
+  const open = source.indexOf('{', idx + PLUGIN_MANAGEMENT_KEYWORD.length)
+  if (open === -1)
+    return undefined
+  let depth = 1
+  let i = open + 1
+  while (i < source.length && depth > 0) {
+    const ch = source.charCodeAt(i)
+    if (ch === 123)
+      depth++ // '{'
+    else if (ch === 125)
+      depth-- // '}'
+    i++
+  }
+  if (depth !== 0)
+    return undefined
+  return source.slice(open + 1, i - 1)
+}

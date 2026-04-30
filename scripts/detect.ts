@@ -14,7 +14,7 @@ import { dirname, isAbsolute, join, relative, resolve } from 'node:path'
 
 import process from 'node:process'
 import { resolveCatalogVersion, resolveProperty } from './lib/detect-gradle-catalog.ts'
-import { parseSettingsIncludes } from './lib/detect-gradle-settings.ts'
+import { parseSettingsIncludes, parseSettingsPluginManagement } from './lib/detect-gradle-settings.ts'
 import { parseGradle } from './lib/detect-gradle.ts'
 import { parsePom } from './lib/detect-maven.ts'
 import {
@@ -117,7 +117,34 @@ function resolveGradle(projectDir: string, rootBuildPath: string, rootRel: strin
     }
   }
 
+  // FR-13: settings.gradle pluginManagement — short-circuits multi-module walk on hit.
+  const pmResult = resolvePluginManagement(projectDir)
+  if (pmResult)
+    return pmResult
+
   return walkGradleSubprojects(projectDir, result)
+}
+
+/**
+ * FR-13: read `settings.gradle(.kts)` and check the `pluginManagement` block
+ * for a literal Spring Boot version.
+ */
+function resolvePluginManagement(projectDir: string): DetectResult | undefined {
+  const settingsRel = findSettingsFile(projectDir)
+  if (!settingsRel)
+    return undefined
+  const src = readFileSync(join(projectDir, settingsRel), 'utf8')
+  const v = parseSettingsPluginManagement(src)
+  if (!v)
+    return undefined
+  return {
+    kind: 'detected',
+    version: v,
+    source: {
+      file: settingsRel,
+      locator: 'pluginManagement plugins block',
+    },
+  }
 }
 
 /**

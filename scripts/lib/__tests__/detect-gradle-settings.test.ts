@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 
-import { parseSettingsIncludes } from '../detect-gradle-settings.ts'
+import { parseSettingsIncludes, parseSettingsPluginManagement } from '../detect-gradle-settings.ts'
 
 describe('parseSettingsIncludes', () => {
   test('Groovy include with single-quoted arg', () => {
@@ -68,5 +68,89 @@ include(":vendor:bom")
   test('does not match a method named foo.include or includeBuild', () => {
     expect(parseSettingsIncludes('includeBuild("../tooling")')).toEqual([])
     expect(parseSettingsIncludes('foo.include("nope")')).toEqual([])
+  })
+})
+
+describe('parseSettingsPluginManagement (FR-13)', () => {
+  test('Kotlin DSL: pluginManagement { plugins { id(...) version "..." } }', () => {
+    const src = `pluginManagement {
+  repositories {
+    gradlePluginPortal()
+  }
+  plugins {
+    id("org.springframework.boot") version "3.4.5"
+  }
+}
+
+include("app")
+`
+    expect(parseSettingsPluginManagement(src)).toBe('3.4.5')
+  })
+
+  test('Groovy DSL with single quotes', () => {
+    const src = `pluginManagement {
+    plugins {
+        id 'org.springframework.boot' version '3.2.8'
+    }
+}`
+    expect(parseSettingsPluginManagement(src)).toBe('3.2.8')
+  })
+
+  test('returns undefined when no pluginManagement block', () => {
+    const src = `plugins { id("org.springframework.boot") version "3.4.0" }`
+    expect(parseSettingsPluginManagement(src)).toBeUndefined()
+  })
+
+  test('returns undefined when pluginManagement does not declare spring-boot', () => {
+    const src = `pluginManagement {
+  plugins {
+    id("io.spring.dependency-management") version "1.1.5"
+  }
+}`
+    expect(parseSettingsPluginManagement(src)).toBeUndefined()
+  })
+
+  test('ignores spring-boot id outside pluginManagement (top-level plugins block in settings is rare but possible)', () => {
+    const src = `plugins {
+  id("org.springframework.boot") version "3.0.0"
+}
+
+pluginManagement {
+  plugins {
+    id("io.spring.dependency-management") version "1.1.5"
+  }
+}`
+    expect(parseSettingsPluginManagement(src)).toBeUndefined()
+  })
+
+  test('returns undefined when version is a property interpolation (orchestrator handles via gradle.properties)', () => {
+    const src = `pluginManagement {
+  plugins {
+    id("org.springframework.boot") version "$springBootVersion"
+  }
+}`
+    expect(parseSettingsPluginManagement(src)).toBeUndefined()
+  })
+
+  test('handles nested braces inside pluginManagement', () => {
+    const src = `pluginManagement {
+  repositories {
+    maven { url = uri("https://example.com/repo") }
+    gradlePluginPortal()
+  }
+  plugins {
+    id("org.springframework.boot") version "3.3.3"
+  }
+}`
+    expect(parseSettingsPluginManagement(src)).toBe('3.3.3')
+  })
+
+  test('returns undefined when pluginManagement block is malformed (missing closing brace)', () => {
+    const src = `pluginManagement {
+  plugins {
+    id("org.springframework.boot") version "3.4.0"
+  }
+`
+    expect(parseSettingsPluginManagement(src)).toBeUndefined()
   })
 })
