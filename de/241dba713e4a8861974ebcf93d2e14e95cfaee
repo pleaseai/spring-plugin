@@ -1,0 +1,32 @@
+scripts/lib/detect-gradle-settings.ts
+  51c6d0d89686e73c 65-116
+scripts/__tests__/detect-gradle-plugin-management.test.ts
+  51c6d0d89686e73c 1-90
+scripts/lib/__tests__/detect-gradle-settings.test.ts
+  51c6d0d89686e73c 3,73-156
+scripts/detect.ts
+  51c6d0d89686e73c 17,120-124,128-147
+.please/docs/tracks/active/build-file-detect-20260428/plan.md
+  51c6d0d89686e73c 86,151
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "de241dba713e4a8861974ebcf93d2e14e95cfaee",
+  "prompts": {
+    "51c6d0d89686e73c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4cea1ed7-9893-4fce-8cb6-33bd8afd16b0",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Minsu Lee",
+      "messages": [],
+      "total_additions": 270,
+      "total_deletions": 16,
+      "accepted_lines": 590,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/b1466fb04195da447eb90c127c58dada9c2a9a1a98daee84b9218c6abaf3702b"
+    }
+  }
+}
