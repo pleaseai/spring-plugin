@@ -175,3 +175,36 @@ These are deferred deliverables identified during the spec-compliance review. Ea
 
 - **2026-04-30 — Bun lcov reporter omits branch coverage.** `bun test --coverage --coverage-reporter=lcov` (Bun 1.3.13) emits `LF` / `LH` (lines) and `FN*` (functions) but no `BRF` / `BRH` / `BRDA` records. Spec NFR-4 / AC-4 say "≥ 90% **branch** coverage". T009 implements the gate using **line coverage as the practical proxy** (current scripts/lib/detect-*.ts: 95–100%). When Bun adds branch metadata or we adopt c8, swap the metric in `scripts/coverage-check.ts` without changing the threshold. Filed as a soft follow-up; not blocking.
 - **2026-04-30 — `scripts/resolve.ts` does not exist yet, so T015 stops at the cache boundary.** FR-16 says network fetch routes through "the same client used by `scripts/resolve.ts`", but resolve.ts is owned by the downstream track. T015 implements only cache-first lookup (m2 / Gradle / plugin-owned). Cache miss falls through to other detection sources rather than fetching. When resolve.ts lands, add the network fetch into `resolvePublishedCatalog` while preserving the cache-first ordering.
+
+## Outcomes & Retrospective
+
+### What Was Shipped
+
+- **Tier-1 build-file detection** (`scripts/detect.ts` + 8 modules under `scripts/lib/`) covering Maven and Gradle with FR-1~FR-17 implemented:
+  - Maven: literal `<version>`, sibling parent POM (5-hop), `~/.m2` external parent cache (FR-14), multi-module walk, `${...}` interpolation → `requires-build-tool` (FR-17)
+  - Gradle: literal plugin DSL, version catalog (FR-12), `gradle.properties`, `pluginManagement` (FR-13), published catalog cache-first (FR-16), multi-module walk
+  - Override: `--boot <version>` per-project SHA-256 keyed JSON store (FR-15)
+  - CLI: exit codes `0/1/2` per FR-11; flags `--boot`, `--clear-override`
+- **Quality gates wired into CI**: ESLint Library Layer guard (`no-restricted-imports`), `bun test --coverage --coverage-reporter=lcov`, `coverage-check.ts` (≥90% line coverage on `scripts/lib/*.ts`), warm-cache latency assertion (NFR-5).
+- **164 tests pass** across unit + integration + perf suites. Library Layer line coverage 95.79%–100% across all 8 modules.
+
+### What Went Well
+
+- **Library/Domain split paid off immediately.** Pure functions in `scripts/lib/` were trivial to unit-test, and the ESLint guard caught two accidental `node:fs` imports during development before they reached CI.
+- **Cache-first lookup pattern (m2 → Gradle hashed cache → plugin-owned cache)** generalized cleanly from FR-14 (Maven external parent) to FR-16 (Gradle published catalog) — the same three-tier shape with different path builders.
+- **Spec-compliance review caught real drift early** (FR-8 m2-cache hits emitted relative paths; coverage gate scope didn't include new lib modules; NFR-5 had no test). All three were fixable in <1 hour each (R1, R2, R3).
+- **Discriminated union return type (`DetectResult`)** made downstream consumers (CLI, future sync.ts) write exhaustive switches naturally; the compiler caught one unhandled case during T016.
+
+### What Could Improve
+
+- **NFR-5 wasn't asserted until R3 (post-implementation review).** The spec called out the 100ms warm-cache budget but no task originally translated it into a test. Tasks should derive directly from NFRs the same way they derive from FRs.
+- **Bun lcov branch-coverage gap discovered late** (during T009 wiring, not during planning). A 30-min spike on the coverage tool *before* writing the gate would have surfaced this earlier and let us either adopt c8 from day 1 or document the proxy upfront.
+- **T015 stopped at cache boundary** because `scripts/resolve.ts` (network owner) didn't exist yet. This was the right call but the dependency on a non-existent module should have been explicit in the task description, not discovered mid-implementation.
+
+### Tech Debt Created
+
+Documented in `## Follow-up Items (post-merge)` and propagated to `tech-debt-tracker.md`:
+
+- **FR-16 network fetch** — `resolvePublishedCatalog` returns `not-found` on cache miss; needs network fallback once `scripts/resolve.ts` lands.
+- **NFR-4 branch coverage** — `coverage-check.ts` uses line coverage as proxy; swap to branch ratios when Bun emits `BRF`/`BRH`/`BRDA` or project adopts c8/istanbul.
+- **NFR-5 stricter latency budget** — current ceiling is `100ms + 100ms CI noise margin`; tighten toward 100ms once CI variance is characterized.
