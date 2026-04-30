@@ -79,19 +79,26 @@ function isExistingDirectory(p: string): boolean {
 function resolveMaven(projectDir: string, initialPath: string): DetectResult {
   let currentAbs = initialPath
   let currentRel = POM
+  let modulesAtRoot: string[] | undefined
   for (let hop = 0; hop < MAX_PARENT_HOPS; hop++) {
     const xml = readFileSync(currentAbs, 'utf8')
     const { result, hints } = parsePom(xml, currentRel)
     if (result.kind === 'detected' || result.kind === 'unsupported') {
       return result
     }
+    // Capture <modules> at the leaf level only (FR-6 walks the project's own
+    // children, not arbitrary ancestors).
+    if (hop === 0 && hints.modules && hints.modules.length > 0) {
+      modulesAtRoot = hints.modules
+    }
     if (!hints.parent || !hints.parent.relativePath) {
-      // Sibling parent traversal exhausted. T013 will add ~/.m2 cache fallback.
-      return result
+      // Sibling parent traversal exhausted. Try multi-module walk before giving
+      // up; T013 will add ~/.m2 cache fallback for external parents.
+      return walkModulesIfAny(projectDir, modulesAtRoot, result)
     }
     const candidate = resolve(dirname(currentAbs), hints.parent.relativePath)
     if (!existsSync(candidate)) {
-      return result
+      return walkModulesIfAny(projectDir, modulesAtRoot, result)
     }
     currentAbs = candidate
     // Compute POSIX-relative path from project root for source attribution.
@@ -99,6 +106,32 @@ function resolveMaven(projectDir: string, initialPath: string): DetectResult {
   }
   // Exhausted hop budget without finding a version.
   return parentTraversalExceeded(currentRel)
+}
+
+/**
+ * FR-6: scan declared `<modules>` for the first child whose POM declares a
+ * Spring Boot version. Returns the {@link fallback} result unchanged when no
+ * child resolves.
+ */
+function walkModulesIfAny(
+  projectDir: string,
+  modules: string[] | undefined,
+  fallback: DetectResult,
+): DetectResult {
+  if (!modules || modules.length === 0)
+    return fallback
+  for (const m of modules) {
+    const childPom = join(projectDir, m, POM)
+    if (!existsSync(childPom))
+      continue
+    const xml = readFileSync(childPom, 'utf8')
+    const childRel = posixRelative(projectDir, childPom)
+    const { result } = parsePom(xml, childRel)
+    if (result.kind === 'detected')
+      return result
+    // Non-detected child results (not-found / unsupported) are skipped — try next.
+  }
+  return fallback
 }
 
 function posixRelative(from: string, to: string): string {
