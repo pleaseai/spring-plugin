@@ -40,5 +40,16 @@ jobs:
       - name: Lint
         run: bun run lint
 
-      - name: Test
-        run: bun test
+      - name: Test (with coverage)
+        run: bun run test:coverage
+
+      - name: Library Layer coverage gate (≥ 90%)
+        run: bun run coverage:check
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lcov
+          path: coverage/lcov.info
+          if-no-files-found: ignore
