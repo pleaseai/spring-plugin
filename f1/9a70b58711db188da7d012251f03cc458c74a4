@@ -1,0 +1,34 @@
+.please/docs/tracks/active/build-file-detect-20260428/plan.md
+  51c6d0d89686e73c 80,148
+scripts/__tests__/fixtures/detect/projects/maven-multimodule-child/pom.xml
+  51c6d0d89686e73c 1-14
+scripts/__tests__/detect-maven-multimodule.test.ts
+  51c6d0d89686e73c 1-140
+scripts/__tests__/fixtures/detect/projects/maven-multimodule-child/shared/pom.xml
+  51c6d0d89686e73c 1-21
+scripts/detect.ts
+  51c6d0d89686e73c 82,89-93,95-97,101,111-134
+scripts/__tests__/fixtures/detect/projects/maven-multimodule-child/app/pom.xml
+  51c6d0d89686e73c 1-20
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "f19a70b58711db188da7d012251f03cc458c74a4",
+  "prompts": {
+    "51c6d0d89686e73c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4cea1ed7-9893-4fce-8cb6-33bd8afd16b0",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Minsu Lee",
+      "messages": [],
+      "total_additions": 237,
+      "total_deletions": 8,
+      "accepted_lines": 565,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/1d3d0d468cb134eebdb31f762638e1b78d5827e2cc29cfa094b20068636a89bf"
+    }
+  }
+}
