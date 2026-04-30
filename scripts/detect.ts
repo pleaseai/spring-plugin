@@ -13,6 +13,7 @@ import { existsSync, readFileSync, statSync } from 'node:fs'
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path'
 
 import process from 'node:process'
+import { resolveCatalogVersion, resolveProperty } from './lib/detect-gradle-catalog.ts'
 import { parseSettingsIncludes } from './lib/detect-gradle-settings.ts'
 import { parseGradle } from './lib/detect-gradle.ts'
 import { parsePom } from './lib/detect-maven.ts'
@@ -27,6 +28,8 @@ const GRADLE_KTS = 'build.gradle.kts'
 const GRADLE_GROOVY = 'build.gradle'
 const SETTINGS_KTS = 'settings.gradle.kts'
 const SETTINGS_GROOVY = 'settings.gradle'
+const VERSION_CATALOG = 'gradle/libs.versions.toml'
+const GRADLE_PROPERTIES = 'gradle.properties'
 
 /** FR-5: maximum number of parent POMs to walk before giving up. */
 const MAX_PARENT_HOPS = 5
@@ -62,15 +65,58 @@ export async function detect(projectDir: string): Promise<DetectResult> {
 }
 
 /**
- * Resolve a Gradle project's Spring Boot version, walking subprojects declared
- * in `settings.gradle(.kts)` (FR-7) when the root build file lacks a version.
+ * Resolve a Gradle project's Spring Boot version. Order of resolution:
+ *
+ * 1. Literal version in the project's own `build.gradle(.kts)`.
+ * 2. Version catalog reference (FR-12) → `gradle/libs.versions.toml`.
+ * 3. Property interpolation (FR-12) → `gradle.properties`.
+ * 4. Multi-module walk (FR-7) — first subproject declaring a version wins.
  */
 function resolveGradle(projectDir: string, rootBuildPath: string, rootRel: string): DetectResult {
-  const xml = readFileSync(rootBuildPath, 'utf8')
-  const { result } = parseGradle(xml, rootRel)
+  const src = readFileSync(rootBuildPath, 'utf8')
+  const { result, hints } = parseGradle(src, rootRel)
   if (result.kind === 'detected' || result.kind === 'unsupported') {
     return result
   }
+
+  // FR-12: catalog reference
+  if (hints.catalogReference) {
+    const catalogAbs = join(projectDir, VERSION_CATALOG)
+    if (existsSync(catalogAbs)) {
+      const tomlSrc = readFileSync(catalogAbs, 'utf8')
+      const v = resolveCatalogVersion(tomlSrc, hints.catalogReference.aliasPath)
+      if (v) {
+        return {
+          kind: 'detected',
+          version: v,
+          source: {
+            file: VERSION_CATALOG,
+            locator: `version catalog alias '${hints.catalogReference.aliasPath}' in [versions]`,
+          },
+        }
+      }
+    }
+  }
+
+  // FR-12: property interpolation
+  if (hints.propertyReference) {
+    const propsAbs = join(projectDir, GRADLE_PROPERTIES)
+    if (existsSync(propsAbs)) {
+      const propsSrc = readFileSync(propsAbs, 'utf8')
+      const v = resolveProperty(propsSrc, hints.propertyReference.name)
+      if (v) {
+        return {
+          kind: 'detected',
+          version: v,
+          source: {
+            file: GRADLE_PROPERTIES,
+            locator: `${hints.propertyReference.name} (gradle.properties)`,
+          },
+        }
+      }
+    }
+  }
+
   return walkGradleSubprojects(projectDir, result)
 }
 
