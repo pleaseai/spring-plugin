@@ -1,0 +1,42 @@
+package.json
+  51c6d0d89686e73c 24-25
+scripts/lib/__tests__/fixtures/detect/maven/bom-import.pom.xml
+  51c6d0d89686e73c 1-32
+scripts/lib/__tests__/fixtures/detect/maven/external-parent.pom.xml
+  51c6d0d89686e73c 1-14
+scripts/lib/__tests__/fixtures/detect/maven/starter-parent.pom.xml
+  51c6d0d89686e73c 1-22
+.please/docs/tracks/active/build-file-detect-20260428/plan.md
+  51c6d0d89686e73c 76,142
+scripts/lib/__tests__/fixtures/detect/maven/sibling-relative-parent.pom.xml
+  51c6d0d89686e73c 1-13
+scripts/lib/__tests__/fixtures/detect/maven/no-spring.pom.xml
+  51c6d0d89686e73c 1-14
+scripts/lib/__tests__/detect-maven.test.ts
+  51c6d0d89686e73c 1-141
+scripts/lib/detect-maven.ts
+  51c6d0d89686e73c 1-205
+scripts/lib/__tests__/fixtures/detect/maven/malformed.pom.xml
+  51c6d0d89686e73c 1-9
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "65d515019e40d74de0ba255b87727ac512d30026",
+  "prompts": {
+    "51c6d0d89686e73c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4cea1ed7-9893-4fce-8cb6-33bd8afd16b0",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Minsu Lee",
+      "messages": [],
+      "total_additions": 512,
+      "total_deletions": 60,
+      "accepted_lines": 454,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/5a3761050538e27501be1fcce56aa32d6de5f2de71ab3df9cd3a7aa94663b203"
+    }
+  }
+}
