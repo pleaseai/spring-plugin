@@ -1,6 +1,7 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import process from 'node:process'
 import { describe, expect, test } from 'bun:test'
 
 import { detect } from '../detect.ts'
@@ -96,15 +97,29 @@ describe('FR-5: Maven parent POM inheritance traversal', () => {
     }
   })
 
-  test('relativePath that does not resolve → not-found (T013 will add ~/.m2 fallback)', async () => {
+  test('relativePath that does not resolve and parent not in m2 cache → unsupported (FR-14 fallback)', async () => {
     const root = mkdtempSync(join(tmpdir(), 'detect-parent-broken-'))
+    const m2 = join(root, 'empty-m2')
     try {
+      mkdirSync(m2)
       writeFileSync(
         join(root, 'pom.xml'),
         CHILD_POM_WITH_RELATIVE('../does-not-exist/pom.xml'),
       )
-      const result = await detect(root)
-      expect(result.kind).toBe('not-found')
+      const prev = process.env.PLEASEAI_SPRING_M2_ROOT
+      process.env.PLEASEAI_SPRING_M2_ROOT = m2
+      try {
+        const result = await detect(root)
+        expect(result.kind).toBe('unsupported')
+        if (result.kind === 'unsupported') {
+          expect(result.reason).toContain('external-parent-not-cached')
+        }
+      }
+      finally {
+        if (prev === undefined)
+          delete process.env.PLEASEAI_SPRING_M2_ROOT
+        else process.env.PLEASEAI_SPRING_M2_ROOT = prev
+      }
     }
     finally {
       rmSync(root, { recursive: true, force: true })

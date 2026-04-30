@@ -10,9 +10,11 @@
 
 import type { DetectResult, NotFoundResult, UnsupportedResult } from './lib/detect-types.ts'
 import { existsSync, readFileSync, statSync } from 'node:fs'
-import { dirname, isAbsolute, join, relative, resolve } from 'node:path'
+import { homedir } from 'node:os'
 
+import { dirname, isAbsolute, join, relative, resolve } from 'node:path'
 import process from 'node:process'
+
 import { resolveCatalogVersion, resolveProperty } from './lib/detect-gradle-catalog.ts'
 import { parseSettingsIncludes, parseSettingsPluginManagement } from './lib/detect-gradle-settings.ts'
 import { parseGradle } from './lib/detect-gradle.ts'
@@ -22,6 +24,7 @@ import {
   SUGGEST_BOOT_OVERRIDE,
 
 } from './lib/detect-types.ts'
+import { mavenCachePath } from './lib/maven-cache.ts'
 
 const POM = 'pom.xml'
 const GRADLE_KTS = 'build.gradle.kts'
@@ -34,7 +37,14 @@ const GRADLE_PROPERTIES = 'gradle.properties'
 /** FR-5: maximum number of parent POMs to walk before giving up. */
 const MAX_PARENT_HOPS = 5
 
+/** Test-only override for the local Maven repository (FR-14). */
+const M2_ENV_OVERRIDE = 'PLEASEAI_SPRING_M2_ROOT'
+
 const WIN_SEP_RE = /\\/g
+
+function getM2Root(): string {
+  return process.env[M2_ENV_OVERRIDE] ?? join(homedir(), '.m2', 'repository')
+}
 
 /**
  * Detect the declared Spring Boot version of a project.
@@ -214,16 +224,36 @@ function resolveMaven(projectDir: string, initialPath: string): DetectResult {
     if (hop === 0 && hints.modules && hints.modules.length > 0) {
       modulesAtRoot = hints.modules
     }
-    if (!hints.parent || !hints.parent.relativePath) {
-      // Sibling parent traversal exhausted. Try multi-module walk before giving
-      // up; T013 will add ~/.m2 cache fallback for external parents.
+    if (!hints.parent) {
       return walkModulesIfAny(projectDir, modulesAtRoot, result)
     }
-    const candidate = resolve(dirname(currentAbs), hints.parent.relativePath)
-    if (!existsSync(candidate)) {
-      return walkModulesIfAny(projectDir, modulesAtRoot, result)
+
+    // Step 1: try sibling-parent (FR-5) when relativePath resolves on disk.
+    let nextAbs: string | undefined
+    if (hints.parent.relativePath) {
+      const candidate = resolve(dirname(currentAbs), hints.parent.relativePath)
+      if (existsSync(candidate))
+        nextAbs = candidate
     }
-    currentAbs = candidate
+
+    // Step 2: FR-14 — fall back to ~/.m2 cache for external parents.
+    if (!nextAbs) {
+      const m2Path = mavenCachePath(
+        hints.parent.groupId,
+        hints.parent.artifactId,
+        hints.parent.version,
+        getM2Root(),
+      )
+      if (existsSync(m2Path)) {
+        nextAbs = m2Path
+      }
+      else {
+        // Cache miss — emit FR-14 unsupported result.
+        return externalParentNotCached(hints.parent, m2Path)
+      }
+    }
+
+    currentAbs = nextAbs
     // Compute POSIX-relative path from project root for source attribution.
     currentRel = posixRelative(projectDir, currentAbs)
   }
@@ -271,6 +301,18 @@ function parentTraversalExceeded(lastFile: string): UnsupportedResult {
     reason: `Maven parent traversal exceeded ${MAX_PARENT_HOPS} hops without finding a Spring Boot version`,
     suggestion: SUGGEST_BOOT_OVERRIDE,
     source: { file: lastFile, locator: `parent traversal stopped after ${MAX_PARENT_HOPS} hops` },
+  }
+}
+
+interface ParentRefShape { groupId: string, artifactId: string, version: string }
+
+function externalParentNotCached(parent: ParentRefShape, m2Path: string): UnsupportedResult {
+  const coords = `${parent.groupId}:${parent.artifactId}:${parent.version}`
+  return {
+    kind: 'unsupported',
+    reason: `external-parent-not-cached: parent ${coords} not present in ~/.m2 (looked up at ${m2Path})`,
+    suggestion: `Run the project's Maven build at least once (e.g., ./mvnw install -N) to populate the local cache, or pass --boot <version> to override (${SUGGEST_BOOT_OVERRIDE})`,
+    source: { file: m2Path, locator: `external parent ${coords}` },
   }
 }
 
