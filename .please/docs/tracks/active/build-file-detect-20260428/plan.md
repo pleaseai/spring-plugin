@@ -75,7 +75,7 @@ Data flow: each layer takes typed input and returns a typed result. Parsers neve
 - [x] T001 Define `DetectResult` and `DetectSource` types (file: `scripts/lib/detect-types.ts`)
 - [x] T002 [P] Implement Maven parser with `fast-xml-parser` for spring-boot-starter-parent + spring-boot-dependencies BOM cases (file: `scripts/lib/detect-maven.ts`, `scripts/lib/__tests__/detect-maven.test.ts`, fixtures under `scripts/lib/__tests__/fixtures/detect/maven/`) (depends on T001)
 - [x] T003 [P] Implement Gradle parser with regex for Groovy + Kotlin DSL (plugins block, apply plugin + ext) (file: `scripts/lib/detect-gradle.ts`, `scripts/lib/__tests__/detect-gradle.test.ts`, fixtures under `scripts/lib/__tests__/fixtures/detect/gradle/`) (depends on T001)
-- [ ] T004 Implement Domain orchestrator + CLI for single-file detection (Maven and Gradle, no multi-module yet) (file: `scripts/detect.ts`, `scripts/__tests__/detect.test.ts`) (depends on T002, T003)
+- [x] T004 Implement Domain orchestrator + CLI for single-file detection (Maven and Gradle, no multi-module yet) (file: `scripts/detect.ts`, `scripts/__tests__/detect.test.ts`) (depends on T002, T003)
 - [ ] T005 Add Maven parent POM inheritance traversal (≤5 hops, follows `<parent><relativePath>`) (file: `scripts/detect.ts`, fixtures under `scripts/lib/__tests__/fixtures/detect/maven-parent/`) (depends on T004)
 - [ ] T006 [P] Add Maven multi-module walk (scan `<modules>` for first child with declared Boot version) (file: `scripts/detect.ts`, fixtures under `scripts/lib/__tests__/fixtures/detect/maven-multimodule/`) (depends on T004)
 - [ ] T007 [P] Add Gradle multi-module walk (parse `settings.gradle(.kts)` `include(...)` and scan one level of subprojects) (file: `scripts/detect.ts`, fixtures under `scripts/lib/__tests__/fixtures/detect/gradle-multimodule/`) (depends on T004)
@@ -141,6 +141,7 @@ Each task is "done" when its tests are green and the relevant SC is checked off 
 - 2026-04-30 — T001 ✅ `DetectResult` / `DetectSource` types + type guards landed in `scripts/lib/detect-types.ts`. Added `REQUIRES_BUILD_TOOL` and `SUGGEST_BOOT_OVERRIDE` literals to enable consistent attribution across FR-9, FR-15, FR-17.
 - 2026-04-30 — T002 ✅ Maven parser `parsePom(xml, file)` covers FR-1 + FR-2; emits `MavenHints` (parent + modules) for downstream traversal (T005, T006, T013). Pure function, fast-xml-parser-backed, malformed XML → `unsupported`. 10 fixture-driven tests.
 - 2026-04-30 — T003 ✅ Gradle parser `parseGradle(source, file)` covers FR-3 + FR-4 across plugins blocks (Groovy/Kotlin), apply plugin + ext, classpath, and `ext['spring-boot.version']`. Emits `GradleHints` (pluginReferenced, catalogReference for FR-12, propertyReference for FR-12 / FR-17 inputs). 11 fixture-driven tests.
+- 2026-04-30 — T004 ✅ Domain orchestrator `detect(projectDir)` + CLI in `scripts/detect.ts`. Maven precedes Gradle when both build files are present. CLI emits JSON to stdout with exit codes per FR-11 (0 detected / 1 unsupported|not-found / 2 internal). 13 tests including 4 `Bun.spawn`-based CLI exit-code tests.
 
 ## Decision Log
 
