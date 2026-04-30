@@ -13,6 +13,7 @@ import { existsSync, readFileSync, statSync } from 'node:fs'
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path'
 
 import process from 'node:process'
+import { parseSettingsIncludes } from './lib/detect-gradle-settings.ts'
 import { parseGradle } from './lib/detect-gradle.ts'
 import { parsePom } from './lib/detect-maven.ts'
 import {
@@ -24,6 +25,8 @@ import {
 const POM = 'pom.xml'
 const GRADLE_KTS = 'build.gradle.kts'
 const GRADLE_GROOVY = 'build.gradle'
+const SETTINGS_KTS = 'settings.gradle.kts'
+const SETTINGS_GROOVY = 'settings.gradle'
 
 /** FR-5: maximum number of parent POMs to walk before giving up. */
 const MAX_PARENT_HOPS = 5
@@ -51,13 +54,60 @@ export async function detect(projectDir: string): Promise<DetectResult> {
   for (const fname of [GRADLE_KTS, GRADLE_GROOVY]) {
     const p = join(projectDir, fname)
     if (existsSync(p)) {
-      const src = readFileSync(p, 'utf8')
-      const { result } = parseGradle(src, fname)
-      return result
+      return resolveGradle(projectDir, p, fname)
     }
   }
 
   return notFound(projectDir)
+}
+
+/**
+ * Resolve a Gradle project's Spring Boot version, walking subprojects declared
+ * in `settings.gradle(.kts)` (FR-7) when the root build file lacks a version.
+ */
+function resolveGradle(projectDir: string, rootBuildPath: string, rootRel: string): DetectResult {
+  const xml = readFileSync(rootBuildPath, 'utf8')
+  const { result } = parseGradle(xml, rootRel)
+  if (result.kind === 'detected' || result.kind === 'unsupported') {
+    return result
+  }
+  return walkGradleSubprojects(projectDir, result)
+}
+
+/**
+ * FR-7: parse `settings.gradle(.kts)` for `include(...)` and scan one level
+ * of subprojects' build files for the Spring Boot plugin. Returns the
+ * {@link fallback} result unchanged when no subproject resolves.
+ */
+function walkGradleSubprojects(projectDir: string, fallback: DetectResult): DetectResult {
+  const settingsRel = findSettingsFile(projectDir)
+  if (!settingsRel)
+    return fallback
+  const settingsAbs = join(projectDir, settingsRel)
+  const includes = parseSettingsIncludes(readFileSync(settingsAbs, 'utf8'))
+  for (const inc of includes) {
+    for (const buildName of [GRADLE_KTS, GRADLE_GROOVY]) {
+      const childRel = `${inc.subdir}/${buildName}`
+      const childAbs = join(projectDir, inc.subdir, buildName)
+      if (!existsSync(childAbs))
+        continue
+      const src = readFileSync(childAbs, 'utf8')
+      const { result } = parseGradle(src, childRel)
+      if (result.kind === 'detected')
+        return result
+      // Stop probing further build-file flavors for this subproject — we found one.
+      break
+    }
+  }
+  return fallback
+}
+
+function findSettingsFile(projectDir: string): string | undefined {
+  for (const name of [SETTINGS_KTS, SETTINGS_GROOVY]) {
+    if (existsSync(join(projectDir, name)))
+      return name
+  }
+  return undefined
 }
 
 function isExistingDirectory(p: string): boolean {
