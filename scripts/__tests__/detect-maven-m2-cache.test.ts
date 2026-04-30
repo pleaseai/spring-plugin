@@ -67,6 +67,10 @@ describe('FR-14: Maven external parent via ~/.m2 cache', () => {
       expect(result.kind).toBe('detected')
       if (result.kind === 'detected') {
         expect(result.version).toBe('3.4.7')
+        // FR-8: out-of-project sources (~/.m2 cache hits) emit POSIX-absolute paths.
+        expect(result.source.file.startsWith('/')).toBe(true)
+        expect(result.source.file).toContain('m2-repo')
+        expect(result.source.file.includes('~/')).toBe(false)
       }
     }
     finally {

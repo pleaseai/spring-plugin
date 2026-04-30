@@ -510,11 +510,19 @@ function walkModulesIfAny(
   return fallback
 }
 
+/**
+ * FR-8 source-file path: POSIX-relative when the target is a strict descendant
+ * of the project root (in-project), else POSIX-absolute (out-of-project — e.g.,
+ * FR-14 `~/.m2` cache hits, FR-5 chains that walk above the project root).
+ */
 function posixRelative(from: string, to: string): string {
-  const rel = relative(from, to)
-  // `relative` uses platform separator; FR-8 contract is POSIX. Normalize.
-  if (isAbsolute(rel))
-    return rel
+  const fromAbs = resolve(from)
+  const toAbs = resolve(to)
+  const rel = relative(fromAbs, toAbs)
+  // `rel` is absolute when the path is on a different volume; starts with `..`
+  // when the target is above (or sibling to) the project root.
+  if (isAbsolute(rel) || rel.startsWith('..') || rel === '')
+    return toAbs.split(WIN_SEP_RE).join('/')
   return rel.split(WIN_SEP_RE).join('/')
 }
 

@@ -54,16 +54,29 @@ describe('parseLcov', () => {
 })
 
 describe('checkCoverage', () => {
-  test('default pattern matches scripts/lib/detect-*.ts only', () => {
+  test('default pattern matches every scripts/lib/*.ts (excludes nested __tests__)', () => {
     const records = parseLcov(SAMPLE_LCOV)
     const { files } = checkCoverage(records)
     const names = files.map(f => f.file).sort()
+    // SAMPLE_LCOV has scripts/detect.ts (excluded) and four scripts/lib/* files (included).
     expect(names).toEqual([
       'scripts/lib/detect-gradle.ts',
       'scripts/lib/detect-low.ts',
       'scripts/lib/detect-maven.ts',
       'scripts/lib/detect-types.ts',
     ])
+  })
+
+  test('default pattern includes new lib modules (e.g., maven-cache.ts) without changes', () => {
+    const lcov = `SF:scripts/lib/maven-cache.ts\nLF:10\nLH:10\nend_of_record\n`
+    const { files } = checkCoverage(parseLcov(lcov))
+    expect(files.map(f => f.file)).toEqual(['scripts/lib/maven-cache.ts'])
+  })
+
+  test('default pattern excludes scripts/lib/__tests__/ files', () => {
+    const lcov = `SF:scripts/lib/__tests__/foo.test.ts\nLF:10\nLH:10\nend_of_record\n`
+    const { files } = checkCoverage(parseLcov(lcov))
+    expect(files).toEqual([])
   })
 
   test('flags files below the 90% default threshold', () => {
