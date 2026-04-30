@@ -1,5 +1,5 @@
 {"id":"plugin-scaffold-20260428","type":"chore","status":"review","phase":"review","issue":"#3","pr":"#7","created":"2026-04-28","section":"completed"}
-{"id":"build-file-detect-20260428","type":"feature","status":"planned","phase":"spec","issue":"#4","created":"2026-04-28","section":"active"}
+{"id":"build-file-detect-20260428","type":"feature","status":"in_progress","phase":"implement","issue":"#4","created":"2026-04-28","section":"active"}
 {"id":"arch-md-v2-20260428","type":"chore","status":"planned","phase":"spec","issue":"#5","created":"2026-04-28","section":"active"}
 {"id":"hook-sync-20260429","type":"feature","status":"planned","phase":"spec","issue":"#9","pr":"#8","created":"2026-04-29","section":"active"}
 {"id":"spring-ask-skill-20260429","type":"feature","status":"planned","phase":"spec","issue":"#10","pr":"#8","created":"2026-04-29","section":"active"}
