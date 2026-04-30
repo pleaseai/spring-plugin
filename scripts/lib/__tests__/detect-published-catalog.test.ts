@@ -89,8 +89,14 @@ describe('cache path builders', () => {
     )
   })
 
-  test('pleaseaiCatalogCachePath uses our own catalogs/ subdir', () => {
+  test('pleaseaiCatalogCachePath uses our own catalogs/ subdir and includes the group to avoid collisions', () => {
     const p = pleaseaiCatalogCachePath('com.example', 'catalog', '1.0', '/home/u/.cache/pleaseai-spring')
-    expect(p).toBe('/home/u/.cache/pleaseai-spring/catalogs/catalog-1.0.toml')
+    expect(p).toBe('/home/u/.cache/pleaseai-spring/catalogs/com.example-catalog-1.0.toml')
+  })
+
+  test('pleaseaiCatalogCachePath produces distinct paths for two publishers of the same artifact', () => {
+    const a = pleaseaiCatalogCachePath('com.example', 'catalog', '1.0', '/c')
+    const b = pleaseaiCatalogCachePath('org.other', 'catalog', '1.0', '/c')
+    expect(a).not.toBe(b)
   })
 })

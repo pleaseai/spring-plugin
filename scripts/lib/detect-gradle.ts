@@ -34,8 +34,10 @@ export interface GradleParseOutput {
 }
 
 const SPRING_BOOT_PLUGIN_ID_RE = /\bid\s*(?:\(\s*)?['"]org\.springframework\.boot['"]\s*\)?/g
-const APPLY_PLUGIN_RE = /\bapply\s+plugin\s*:\s*['"]org\.springframework\.boot['"]/
-const CLASSPATH_PLUGIN_RE = /\bclasspath\s+['"]org\.springframework\.boot:spring-boot-gradle-plugin/
+// Matches Groovy `apply plugin: '…'` and Kotlin `apply(plugin = "…")` forms.
+const APPLY_PLUGIN_RE = /\bapply\s*(?:\(\s*plugin\s*=\s*|plugin\s*:\s*)['"]org\.springframework\.boot['"]/
+// Matches Groovy `classpath '…'` and Kotlin `classpath("…")` forms.
+const CLASSPATH_PLUGIN_RE = /\bclasspath\s*(?:\(\s*)?['"]org\.springframework\.boot:spring-boot-gradle-plugin/
 
 const PLUGINS_LITERAL_RE
   = /\bid\s*(?:\(\s*)?['"]org\.springframework\.boot['"]\s*(?:\)\s*)?version\s+['"]([^'"]+)['"]/

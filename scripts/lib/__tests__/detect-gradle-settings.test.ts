@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 
-import { parseSettingsIncludes, parseSettingsPluginManagement } from '../detect-gradle-settings.ts'
+import { parseSettingsIncludes, parseSettingsPluginManagement, stripPluginManagementBlock } from '../detect-gradle-settings.ts'
 
 describe('parseSettingsIncludes', () => {
   test('Groovy include with single-quoted arg', () => {
@@ -68,6 +68,21 @@ include(":vendor:bom")
   test('does not match a method named foo.include or includeBuild', () => {
     expect(parseSettingsIncludes('includeBuild("../tooling")')).toEqual([])
     expect(parseSettingsIncludes('foo.include("nope")')).toEqual([])
+  })
+
+  test('ignores include() inside line comments', () => {
+    const src = `// include("phantom-line")
+include("real")
+`
+    expect(parseSettingsIncludes(src)).toEqual([{ path: 'real', subdir: 'real' }])
+  })
+
+  test('ignores include() inside block comments', () => {
+    const src = `/* include("phantom-block")
+   include("also-phantom") */
+include("real")
+`
+    expect(parseSettingsIncludes(src)).toEqual([{ path: 'real', subdir: 'real' }])
   })
 })
 
@@ -152,5 +167,97 @@ pluginManagement {
   }
 `
     expect(parseSettingsPluginManagement(src)).toBeUndefined()
+  })
+
+  test('ignores pluginManagement keyword that appears in a line comment', () => {
+    const src = `// pluginManagement { plugins { id("org.springframework.boot") version "9.9.9" } }
+pluginManagement {
+  plugins {
+    id("org.springframework.boot") version "3.4.0"
+  }
+}`
+    expect(parseSettingsPluginManagement(src)).toBe('3.4.0')
+  })
+
+  test('ignores pluginManagement keyword that appears inside a string literal', () => {
+    const src = `val msg = "pluginManagement { plugins { } }"
+pluginManagement {
+  plugins {
+    id("org.springframework.boot") version "3.5.1"
+  }
+}`
+    expect(parseSettingsPluginManagement(src)).toBe('3.5.1')
+  })
+
+  test('ignores braces inside string literals when matching pluginManagement block', () => {
+    const src = `pluginManagement {
+  val s = "}}}"
+  plugins {
+    id("org.springframework.boot") version "3.6.0"
+  }
+}`
+    expect(parseSettingsPluginManagement(src)).toBe('3.6.0')
+  })
+
+  test('handles triple-quoted Kotlin strings without losing block bounds', () => {
+    const src = `pluginManagement {
+  val msg = """
+  pluginManagement { plugins { } }
+  }}}}
+  """
+  plugins {
+    id("org.springframework.boot") version "3.7.2"
+  }
+}`
+    expect(parseSettingsPluginManagement(src)).toBe('3.7.2')
+  })
+
+  test('handles backslash-escaped quotes in strings', () => {
+    const src = `pluginManagement {
+  val s = "a\\\"} } pluginManagement { id"
+  plugins {
+    id("org.springframework.boot") version "3.8.0"
+  }
+}`
+    expect(parseSettingsPluginManagement(src)).toBe('3.8.0')
+  })
+})
+
+describe('stripPluginManagementBlock', () => {
+  test('removes a pluginManagement block while preserving surrounding code', () => {
+    const src = `pluginManagement {
+  plugins {
+    id("org.springframework.boot") version "3.4.0"
+  }
+}
+
+apply(plugin = "real-plugin")
+`
+    const out = stripPluginManagementBlock(src)
+    expect(out).not.toContain('org.springframework.boot')
+    // The downstream `apply` line must survive verbatim.
+    expect(out).toContain('apply(plugin = "real-plugin")')
+    // Length is preserved so character indices map 1:1.
+    expect(out.length).toBe(src.length)
+  })
+
+  test('returns input unchanged when there is no pluginManagement block', () => {
+    const src = `plugins {
+  id("org.springframework.boot") version "3.4.0"
+}
+`
+    expect(stripPluginManagementBlock(src)).toBe(src)
+  })
+
+  test('does not strip an apply(...) call sitting outside pluginManagement', () => {
+    const src = `pluginManagement {
+  apply(plugin = "settings-only-plugin")
+}
+
+apply(plugin = "real-settings-plugin")
+`
+    const out = stripPluginManagementBlock(src)
+    expect(out).not.toContain('settings-only-plugin')
+    expect(out).toContain('real-settings-plugin')
   })
 })

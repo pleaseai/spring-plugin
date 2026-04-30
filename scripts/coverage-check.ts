@@ -16,10 +16,11 @@ import process from 'node:process'
 
 const DEFAULT_LCOV = join(process.cwd(), 'coverage', 'lcov.info')
 const DEFAULT_THRESHOLD = 0.9
-// All Library Layer modules under scripts/lib/, excluding test files.
-// Pattern intentionally allows new lib modules (e.g., maven-cache.ts, overrides.ts)
-// without requiring the regex to be expanded each time.
-const DEFAULT_PATTERN = /^scripts\/lib\/[^/]+\.ts$/
+// All Library Layer modules under scripts/lib/, excluding `__tests__/` files
+// and any colocated `*.test.ts` / `*.spec.ts` files. Pattern allows new lib
+// modules (e.g., maven-cache.ts, overrides.ts) without expanding the regex
+// each time.
+const DEFAULT_PATTERN = /^scripts\/lib\/(?!__tests__\/)[^/]+(?<!\.test|\.spec)\.ts$/
 const LINE_BREAK_RE = /\r?\n/
 
 export interface FileCoverage {

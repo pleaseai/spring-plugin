@@ -154,17 +154,21 @@ describe('FR-5: Maven parent POM inheritance traversal', () => {
   })
 
   test('malformed parent POM → unsupported (propagates parser failure)', async () => {
+    // Keep both child and parent fixtures under the same temp root so cleanup
+    // never escapes mkdtemp's allocated directory.
     const root = mkdtempSync(join(tmpdir(), 'detect-parent-malformed-'))
     try {
-      writeFileSync(join(root, 'pom.xml'), CHILD_POM_WITH_RELATIVE('../parent/pom.xml'))
-      mkdirSync(join(root, '..', 'parent'), { recursive: true })
-      writeFileSync(join(root, '..', 'parent', 'pom.xml'), '<not<valid>>>')
-      const result = await detect(root)
+      const child = join(root, 'child')
+      const parent = join(root, 'parent')
+      mkdirSync(child, { recursive: true })
+      mkdirSync(parent, { recursive: true })
+      writeFileSync(join(child, 'pom.xml'), CHILD_POM_WITH_RELATIVE('../parent/pom.xml'))
+      writeFileSync(join(parent, 'pom.xml'), '<not<valid>>>')
+      const result = await detect(child)
       expect(result.kind).toBe('unsupported')
     }
     finally {
       rmSync(root, { recursive: true, force: true })
-      rmSync(join(root, '..', 'parent'), { recursive: true, force: true })
     }
   })
 })

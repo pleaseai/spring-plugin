@@ -17,7 +17,7 @@ import { dirname, isAbsolute, join, relative, resolve } from 'node:path'
 
 import process from 'node:process'
 import { resolveCatalogVersion, resolveProperty } from './lib/detect-gradle-catalog.ts'
-import { parseSettingsIncludes, parseSettingsPluginManagement } from './lib/detect-gradle-settings.ts'
+import { parseSettingsIncludes, parseSettingsPluginManagement, stripPluginManagementBlock } from './lib/detect-gradle-settings.ts'
 import { parseGradle } from './lib/detect-gradle.ts'
 import { parsePom } from './lib/detect-maven.ts'
 import {
@@ -265,7 +265,9 @@ function detectGradleRequiresBuildTool(projectDir: string): UnsupportedResult | 
 const SETTINGS_APPLY_RE = /^\s*apply\s*[<(]/m
 
 function settingsAppliesPlugin(source: string): boolean {
-  return SETTINGS_APPLY_RE.test(source)
+  // `apply(...)` calls are legal inside `pluginManagement { ... }` and don't
+  // count as settings-level plugin application — strip that block first.
+  return SETTINGS_APPLY_RE.test(stripPluginManagementBlock(source))
 }
 
 function requiresBuildToolResult(triggers: string[], file: string): UnsupportedResult {

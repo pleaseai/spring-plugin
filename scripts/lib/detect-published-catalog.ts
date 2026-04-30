@@ -23,6 +23,15 @@ const FROM_CALL_RE = /from\s*\(\s*['"]([^:'"]+):([^:'"]+):([^'"]+)['"]\s*\)/
 const CREATE_CALL_RE = /create\s*\(\s*['"]([^'"]+)['"]\s*\)/g
 const VERSION_CATALOGS_KEYWORD = 'versionCatalogs'
 
+const SPACE = 32
+const TAB = 9
+const NEWLINE = 10
+const CR = 13
+
+function isAsciiWhitespace(charCode: number): boolean {
+  return charCode === SPACE || charCode === TAB || charCode === NEWLINE || charCode === CR
+}
+
 export interface PublishedCatalogRef {
   /** Catalog accessor name in the project (`libs`, `springLibs`, …). */
   alias: string
@@ -91,9 +100,10 @@ function extractVersionCatalogsBlock(source: string): string | undefined {
  * the input when no balanced block is found.
  */
 function findCreateBlockEnd(block: string, fromIndex: number): number {
-  // Skip whitespace looking for the opening `{`.
+  // Skip whitespace (incl. newline/CR) looking for the opening `{`. Multi-line
+  // `create(...) {\n  from(...) }` is the common formatting for Kotlin DSL.
   let i = fromIndex
-  while (i < block.length && (block.charCodeAt(i) === 32 || block.charCodeAt(i) === 9))
+  while (i < block.length && isAsciiWhitespace(block.charCodeAt(i)))
     i++
   if (i >= block.length || block.charCodeAt(i) !== 123)
     return block.length
@@ -137,13 +147,15 @@ export function gradleCacheCatalogDir(
 
 /**
  * Plugin-owned catalog cache (manually populated when the user runs detect with
- * a known catalog or via a future fetch flow).
+ * a known catalog or via a future fetch flow). The `group` is included in the
+ * filename so that two publishers shipping the same `artifact:version` pair do
+ * not collide in this flat cache directory.
  */
 export function pleaseaiCatalogCachePath(
-  _group: string,
+  group: string,
   artifact: string,
   version: string,
   pleaseaiCacheRoot: string,
 ): string {
-  return join(pleaseaiCacheRoot, 'catalogs', `${artifact}-${version}.toml`)
+  return join(pleaseaiCacheRoot, 'catalogs', `${group}-${artifact}-${version}.toml`)
 }

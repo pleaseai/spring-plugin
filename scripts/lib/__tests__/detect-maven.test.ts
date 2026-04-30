@@ -138,4 +138,27 @@ describe('parsePom', () => {
       expect(result.version).toBe('3.4.0')
     }
   })
+
+  test('FR-17: spring-boot-dependencies BOM with Maven property interpolation escalates to requires-build-tool', () => {
+    const xml = `<?xml version="1.0"?>
+<project>
+  <dependencyManagement>
+    <dependencies>
+      <dependency>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-dependencies</artifactId>
+        <version>\${spring-boot.version}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+    </dependencies>
+  </dependencyManagement>
+</project>`
+    const { result } = parsePom(xml, 'pom.xml')
+    expect(result.kind).toBe('unsupported')
+    if (result.kind === 'unsupported') {
+      expect(result.reason).toContain('requires-build-tool')
+      expect(result.reason).toContain('Maven property interpolation')
+    }
+  })
 })

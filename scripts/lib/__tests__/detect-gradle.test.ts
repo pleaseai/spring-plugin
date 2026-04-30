@@ -127,4 +127,28 @@ describe('parseGradle', () => {
     expect(result.kind).toBe('not-found')
     expect(hints.propertyReference?.name).toBe('revision')
   })
+
+  test('FR-4 (Kotlin): legacy apply(plugin = "...") form sets pluginReferenced hint', () => {
+    const src = `buildscript {
+  dependencies {
+    classpath("org.springframework.boot:spring-boot-gradle-plugin:3.4.5")
+  }
+}
+apply(plugin = "org.springframework.boot")
+`
+    const { result, hints } = parseGradle(src, 'build.gradle.kts')
+    // classpath with literal version → ASSIGN_VERSION_PATTERNS already matched it.
+    expect(result.kind).toBe('detected')
+    if (result.kind === 'detected')
+      expect(result.version).toBe('3.4.5')
+    expect(hints.pluginReferenced).toBe(true)
+  })
+
+  test('FR-4 (Kotlin): bare apply(plugin = "...") without version sets pluginReferenced hint and returns not-found', () => {
+    const src = `apply(plugin = "org.springframework.boot")
+`
+    const { result, hints } = parseGradle(src, 'build.gradle.kts')
+    expect(result.kind).toBe('not-found')
+    expect(hints.pluginReferenced).toBe(true)
+  })
 })

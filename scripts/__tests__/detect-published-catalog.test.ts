@@ -130,7 +130,8 @@ describe('FR-16: published catalog cache-first lookup', () => {
       // Populate plugin-owned cache (under homeRoot/.cache/pleaseai-spring).
       const ownedDir = join(homeRoot, '.cache', 'pleaseai-spring', 'catalogs')
       mkdirSync(ownedDir, { recursive: true })
-      writeFileSync(join(ownedDir, 'platform-catalog-1.0.0.toml'), TOML_WITH_SPRING_BOOT('3.0.5'))
+      // Group is included in the filename to avoid collisions across publishers.
+      writeFileSync(join(ownedDir, 'com.example-platform-catalog-1.0.0.toml'), TOML_WITH_SPRING_BOOT('3.0.5'))
 
       const result = await detect(project)
       expect(result.kind).toBe('detected')

@@ -102,6 +102,17 @@ export function parsePom(xml: string, file: string): MavenParseOutput {
   // Pattern 2: spring-boot-dependencies BOM in <dependencyManagement>
   const bomVersion = readSpringBootBomVersion(project as Record<string, unknown>)
   if (bomVersion) {
+    if (containsInterpolation(bomVersion)) {
+      // FR-17: ${...} interpolation in BOM version requires Maven evaluation.
+      return {
+        result: requiresBuildTool(
+          file,
+          `spring-boot-dependencies <version> uses Maven property interpolation (${bomVersion})`,
+          'spring-boot-dependencies BOM in <dependencyManagement>',
+        ),
+        hints: {},
+      }
+    }
     return {
       result: detected(bomVersion, file, 'spring-boot-dependencies BOM in <dependencyManagement>'),
       hints: {},
