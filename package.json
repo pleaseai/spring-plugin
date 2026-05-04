@@ -15,13 +15,16 @@
   },
   "scripts": {
     "test": "bun test",
+    "test:coverage": "bun test --coverage --coverage-reporter=text --coverage-reporter=lcov",
+    "coverage:check": "bun run scripts/coverage-check.ts",
     "typecheck": "tsc --noEmit",
     "lint": "eslint --max-warnings 0",
     "lint:fix": "eslint --fix",
     "prepare": "husky"
   },
   "dependencies": {
-    "consola": "3.4.2"
+    "consola": "3.4.2",
+    "fast-xml-parser": "^5.7.2"
   },
   "devDependencies": {
     "@pleaseai/eslint-config": "0.0.1",

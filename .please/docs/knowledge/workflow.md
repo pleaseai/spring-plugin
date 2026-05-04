@@ -51,9 +51,10 @@ Executed when all tasks in a phase are complete:
 Before marking any task complete:
 
 - [ ] All tests pass (`bun test`)
-- [ ] Code coverage meets requirements (>80%)
+- [ ] Code coverage meets requirements (>80% project-wide; **≥90% line coverage for `scripts/lib/detect-*.ts`**, gated in CI via `bun run coverage:check`)
 - [ ] No TypeScript errors (`bun run typecheck`)
 - [ ] No linting errors (`bun run lint`)
+- [ ] Library Layer files under `scripts/lib/` have no I/O imports (enforced by ESLint `no-restricted-imports` for `node:fs`, `node:fs/promises`, `node:net`, `node:http`, `node:https`, `bun`)
 - [ ] Eval suite shows no pass-rate regression (when applicable)
 - [ ] Documentation updated if needed (README, SKILL.md descriptions)
 
@@ -87,8 +88,11 @@ bun test --watch
 # Single file
 bun test scripts/lib/antora-rules.test.ts
 
-# Coverage report
-bun test --coverage
+# Coverage report (text + lcov)
+bun run test:coverage
+
+# Library Layer coverage gate (≥ 90% line coverage)
+bun run coverage:check
 ```
 
 ### Eval Suite
