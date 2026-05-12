@@ -270,7 +270,7 @@ Useful if you're debugging a conversion issue or want to verify a fresh build ma
 If your environment can't reach `github.com` or `docs.spring.io`, you can pre-stage archives:
 
 ```bash
-# Download on a connected machine (tag scheme: <project>-<version>)
+# Download on a connected machine (tag scheme: <component>-<version>, e.g., framework-6.2.1)
 curl -L -o spring-framework-6.2.1.tar.gz \
   https://github.com/pleaseai/spring-docs/releases/download/framework-6.2.1/spring-framework-6.2.1.tar.gz
 
