@@ -66,7 +66,7 @@ What happens:
 3. Fetches the matching `spring-boot-dependencies` BOM from Maven Central
 4. Resolves transitive Spring component versions (Framework, Security, Data, etc.)
 5. For each component:
-   - Checks if a prebuilt archive exists in this plugin's GitHub Releases
+   - Checks if a prebuilt archive exists in [`pleaseai/spring-docs`](https://github.com/pleaseai/spring-docs) releases
    - If yes: downloads and extracts (~3 seconds)
    - If no: fetches docs from `docs.spring.io`, converts Antora HTML to Markdown (~30–60 seconds)
 6. Installs into `.claude/skills/spring-<component>/` with a generated `SKILL.md`
@@ -195,11 +195,13 @@ pleaseai/spring/
 │   └── lib/
 │       ├── antora-rules.ts      ← Antora-specific Turndown rules
 │       └── manifest.ts          ← .claude/skills/*/manifest.json schema
-├── prebuilt/                    ← Metadata for prebuilt archives
-│   └── catalog.json             ← Maps version → release asset URL
+├── prebuilt/                    ← Cached snapshot of spring-docs catalog
+│   └── catalog.json             ← Mirror of pleaseai/spring-docs/catalog.json (offline fallback)
 └── .github/workflows/
-    └── nightly-build.yml        ← Builds new archives on upstream releases
+    └── ci.yml                   ← typecheck / lint / test on PRs
 ```
+
+Archive generation lives in [`pleaseai/spring-docs`](https://github.com/pleaseai/spring-docs); this plugin only consumes its Releases.
 
 Per Claude Code conventions:
 - The manifest lives at `.claude-plugin/plugin.json` (only file in that directory)
@@ -241,9 +243,9 @@ For projects without Boot (rare), use `/spring:add` to install components indivi
 
 ## Prebuilt archives
 
-To keep `/spring:install` fast, this plugin maintains pre-converted Markdown archives for popular Spring components and versions. Archives are published as GitHub Releases on this repository.
+To keep `/spring:install` fast, pre-converted Markdown archives are maintained in a **separate content repository**: [`pleaseai/spring-docs`](https://github.com/pleaseai/spring-docs). This plugin downloads matching archives from its GitHub Releases at install time. Splitting content from code keeps the plugin small (~1 MB), lets the conversion pipeline release on its own cadence, and makes the archives reusable by non-Claude-Code tools (Cursor, Continue, RAG indexes, etc.).
 
-Coverage:
+Coverage maintained in `spring-docs`:
 
 | Component | Version lines maintained |
 |---|---|
@@ -253,7 +255,7 @@ Coverage:
 | spring-data-jpa | Latest two minor lines |
 | spring-cloud | Latest year line |
 
-Archives are built nightly from upstream releases. If your project uses a version we don't have prebuilt, the plugin falls back to live conversion automatically — slower (~60s) but always works.
+Archives are built nightly from upstream releases. If your project uses a version `spring-docs` doesn't have prebuilt, the plugin falls back to live conversion automatically — slower (~60s) but always works.
 
 To skip the prebuilt cache and always convert fresh:
 
@@ -268,9 +270,9 @@ Useful if you're debugging a conversion issue or want to verify a fresh build ma
 If your environment can't reach `github.com` or `docs.spring.io`, you can pre-stage archives:
 
 ```bash
-# Download on a connected machine
+# Download on a connected machine (tag scheme: <component>-<version>, e.g., framework-6.2.1)
 curl -L -o spring-framework-6.2.1.tar.gz \
-  https://github.com/pleaseai/spring/releases/download/spring-framework-6.2.1/spring-framework-6.2.1.tar.gz
+  https://github.com/pleaseai/spring-docs/releases/download/framework-6.2.1/spring-framework-6.2.1.tar.gz
 
 # Place in the plugin's offline cache
 mkdir -p ~/.cache/pleaseai-spring/archives/
@@ -385,9 +387,9 @@ Licensed under **Apache-2.0**. See [`LICENSE`](./LICENSE).
 
 ### Generated archives
 
-The plugin downloads Spring documentation and converts it to Markdown. Each generated archive carries Spring's upstream license (Apache-2.0) in a `NOTICE` file. We do not relicense documentation content; we only change format.
+The Markdown archives live in [`pleaseai/spring-docs`](https://github.com/pleaseai/spring-docs) and each carries Spring's upstream license (Apache-2.0) in a `NOTICE` file pinned to the exact source commit. We do not relicense documentation content; we only change format.
 
-If you are a Spring maintainer and have concerns about how documentation is mirrored here, please open an issue.
+If you are a Spring maintainer and have concerns about how documentation is mirrored, please open an issue on [`pleaseai/spring-docs`](https://github.com/pleaseai/spring-docs/issues).
 
 ## FAQ
 
@@ -414,6 +416,7 @@ We ship skills for components in the default coverage matrix. To install others,
 
 ## Related projects
 
+- [`@pleaseai/spring-docs`](https://github.com/pleaseai/spring-docs) — Content repository hosting the pre-converted Markdown archives this plugin downloads
 - [`@pleaseai/ask`](https://github.com/pleaseai/ask) — Generic library docs for Claude Code (npm, github, pypi, pub)
 - [Spring Framework](https://github.com/spring-projects/spring-framework) — Upstream
 - [Spring Boot](https://github.com/spring-projects/spring-boot) — Upstream
