@@ -1,0 +1,19 @@
+README.md
+  s_0d52565fc49fb4::t_81ef57a79cb661 273
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.4",
+  "base_commit_sha": "bfd8adf2ecbed1ac9e652049665567990de0f787",
+  "prompts": {},
+  "sessions": {
+    "s_0d52565fc49fb4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f4f69926-b0ed-4b5e-a210-aa35f1c2b3b9",
+        "model": "unknown"
+      },
+      "human_author": "Minsu Lee <amond@amond.net>"
+    }
+  }
+}
