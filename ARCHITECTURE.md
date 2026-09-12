@@ -3,10 +3,14 @@
 > Agent-first architecture document for `@pleaseai/spring` — Claude Code plugin
 > for Spring ecosystem documentation.
 
-> **Status**: Target architecture. The repository currently contains only
-> `README.md`, `LICENSE`, and project metadata; the modules described below
-> are the planned implementation. As code lands, this document is updated
-> to reflect actual structure (not aspirational design).
+> **Status**: Target architecture, **partly superseded**. Detection
+> (`scripts/detect.ts`), documentation resolution (`scripts/docs.ts`) and the
+> `spring-docs` skill are implemented. They do not install documentation into
+> `.claude/skills/spring-*/` and do not annotate the project's `CLAUDE.md`:
+> an archive is unpacked once into `~/.cache/pleaseai-spring/docs/<tag>/` and
+> callers are handed the path (see README, "Why not install the docs into the
+> project"). The install/resolve/convert pipeline described below is still the
+> unrevised earlier design; it is rewritten when the remaining stages land.
 
 ## System Overview
 

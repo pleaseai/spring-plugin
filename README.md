@@ -1,425 +1,128 @@
 # @pleaseai/spring
 
-> Claude Code plugin for Spring ecosystem documentation.
+> Claude Code plugin for version-matched Spring reference documentation.
 
-Detects Spring versions from your build files, downloads matching reference docs as LLM-friendly Markdown, and makes them available to Claude Code as version-aware skills. Works across Spring Framework, Boot, Security, Data, and Cloud.
+Answers Spring questions from the documentation of the version your project actually declares, not the newest release. It reads the Spring Boot version out of your build file, resolves it to a published documentation archive, unpacks it once into a shared cache, and points Claude at that directory.
 
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](./LICENSE)
 
-## What this does
+## Status
 
-When you run `/spring:install` in a Spring project, this plugin:
+Two scripts and one skill are implemented: build-file detection, documentation resolution, and the `spring-docs` skill that ties them together. There are no slash commands yet — the skill is the interface, and Claude invokes it on its own when a question needs Spring documentation.
 
-1. **Detects** Spring versions from `build.gradle`, `build.gradle.kts`, or `pom.xml`
-2. **Resolves** the full ecosystem via the Spring Boot BOM — one declared Boot version pins Framework, Security, Data, and the rest
-3. **Downloads** version-matched documentation (prebuilt archive when available, fresh conversion otherwise)
-4. **Installs** it as Claude Code skills under `.claude/skills/spring-*/`
-
-After install, Claude Code automatically loads the right Spring docs whenever you work on Spring code — no manual lookup, no version mismatch, no hallucinated APIs from the wrong major release.
-
-## Why a separate plugin
-
-Spring's documentation has characteristics that don't fit generic doc-fetching tools:
-
-- **Antora-based** — `xref:`, `include::`, attribute substitution, conditional blocks
-- **Multi-repository** — Framework, Boot, Security, Data, Cloud each live in their own repo
-- **BOM-driven versioning** — your declared Boot version implicitly pins ten other components
-- **Large conversion cost** — full Framework reference is ~200 pages, ~60 seconds to convert
-- **Build-tool integration** — version detection requires understanding `build.gradle` and `pom.xml`
-
-Bundling this complexity into a generic doc tool would inflate it for every user, even those not using Spring. Extracting it as a focused plugin keeps the surface area honest and lets Spring expertise live where it belongs.
-
-## Installation
+## What it does
 
 ```
-/plugin install pleaseai/spring
+you: "does spring.jpa.open-in-view still default to true?"
+
+  ├─ scripts/detect.ts .           → build.gradle declares Boot 3.5.16
+  ├─ scripts/docs.ts boot 3.5.16   → ~/.cache/pleaseai-spring/docs/boot-3.5.16
+  └─ Claude reads _index.md, opens the pages it needs, answers from 3.5.16
 ```
 
-Or, for local development:
+Nothing is written into your project. No `.claude/skills/spring-*/` tree, no `CLAUDE.md` block, no `.gitignore` entry — the documentation lives in a cache shared across every project and branch on the machine.
+
+## Why not install the docs into the project
+
+An early design wrote each component's Markdown under `.claude/skills/spring-*/` and annotated the project's `CLAUDE.md`. That was dropped:
+
+- **One version is 150-250 files** (2.4 MB for Boot 3.5.16, 3.6 MB for 4.1.1). In the project tree that is a permanent diff, a `.gitignore` entry, and a branch-switch hazard.
+- **Every project pays again** for the same version.
+- **Rewriting someone's `CLAUDE.md`** is a trust cost with no return once the skill can simply name a path.
+- **Staleness**: on-disk skills drift when the declared version changes. Resolving per question cannot drift.
+
+The cache is keyed by release **tag**, not by version, so a corrected archive (`boot-4.1.1+rebuild.1`) lands beside the one it supersedes instead of silently serving stale bytes.
+
+## Usage
+
+The skill runs the scripts for you. To use them directly:
 
 ```bash
-git clone https://github.com/pleaseai/spring ~/.claude/plugins/spring
+# Which Boot version does this project declare?
+bun run scripts/detect.ts .
+
+# Resolve that version's docs; prints JSON with a `path`
+bun run scripts/docs.ts boot 3.5.16
+
+# Require a cache hit (offline), or force a re-download
+bun run scripts/docs.ts boot 3.5.16 --no-fetch
+bun run scripts/docs.ts boot 3.5.16 --refresh
 ```
 
-Verify it loaded:
-
-```
-/spring:list
-```
-
-## Commands
-
-### `/spring:install`
-
-Detect Spring versions in the current project and install matching docs.
-
-```
-/spring:install            # auto-detect everything
-/spring:install --boot 3.5 # override Boot line, derive the rest
-/spring:install framework  # install only Spring Framework
+```json
+{
+  "kind": "ready",
+  "project": "boot",
+  "version": "3.5.16",
+  "tag": "boot-3.5.16",
+  "path": "/Users/you/.cache/pleaseai-spring/docs/boot-3.5.16",
+  "index": "/Users/you/.cache/pleaseai-spring/docs/boot-3.5.16/_index.md",
+  "cached": true
+}
 ```
 
-What happens:
+A version that has not been published comes back as `kind: "unavailable"` with the issue tracker in `suggestion`. The skill is instructed not to quietly substitute a different version — answering from the wrong minor is the failure this plugin exists to prevent.
 
-1. Reads `build.gradle` / `build.gradle.kts` / `pom.xml` from project root
-2. Finds the Spring Boot version (most projects pin via `spring-boot-starter-parent` or the Spring Dependency Management plugin)
-3. Fetches the matching `spring-boot-dependencies` BOM from Maven Central
-4. Resolves transitive Spring component versions (Framework, Security, Data, etc.)
-5. For each component:
-   - Checks if a prebuilt archive exists in [`pleaseai/spring-docs`](https://github.com/pleaseai/spring-docs) releases
-   - If yes: downloads and extracts (~3 seconds)
-   - If no: fetches docs from `docs.spring.io`, converts Antora HTML to Markdown (~30–60 seconds)
-6. Installs into `.claude/skills/spring-<component>/` with a generated `SKILL.md`
-7. Updates the project's `CLAUDE.md` with version notes
+## How resolution works
 
-Idempotent: re-running with the same versions is a no-op. Safe to put in a postinstall hook.
+1. **Catalog lookup** — `catalog.json` on [`pleaseai/spring-docs`](https://github.com/pleaseai/spring-docs) maps `(project, version)` to a release tag. It is a few kilobytes and is fetched every time, because it is the only thing that reports a rebuild having moved a version to a new tag.
+2. **Cache check** — if the tag's directory is already unpacked, that path is returned and nothing else is downloaded.
+3. **Download and verify** — the `.tar.gz` (0.4-0.5 MB) and its `.sha256` sidecar. A digest mismatch writes nothing and fails loudly.
+4. **Unpack** — into a staging directory beside the target, then renamed into place, so an interrupted run never leaves a half-written tree under the name callers read.
 
-### `/spring:list`
+Each unpacked tree carries the `manifest.json` from its release: upstream repository, ref, commit, converter versions, file count, and a checksum over the content.
 
-Show installed Spring skills and their versions.
+## Coverage
 
-```
-/spring:list
-```
+| Project | Versions | Source |
+|---|---|---|
+| `boot` | Spring Boot `3.3.0`-`3.x`, `4.0.8`+ | [`pleaseai/spring-docs`](https://github.com/pleaseai/spring-docs) releases |
 
-```
-spring-framework  6.2.1   (auto-detected from Boot 3.5.0)
-spring-boot       3.5.0   (declared in build.gradle)
-spring-security   6.4.0   (auto-detected from Boot 3.5.0)
-spring-data-jpa   3.5.0   (auto-detected from Boot 3.5.0)
-```
+Not buildable upstream, and therefore absent: Boot 3.2 and older predate the Antora documentation component, and 4.0.0-4.0.7 publish no content archive. Pre-release versions (M, RC, SNAPSHOT) are out of scope.
 
-### `/spring:update`
+Spring Boot 3.x trees omit the generated appendix — auto-configuration class listings and configuration-property tables are a Gradle build output upstream never publishes. The prose corpus (reference, how-to, tutorial, specification) is complete.
 
-Refresh installed components against the latest patches in their declared minor lines.
-
-```
-/spring:update                # all installed components
-/spring:update framework      # one component
-/spring:update --check        # dry run, no changes
-```
-
-Honors the version line declared at install time. To move across minor or major lines, use `/spring:install` again with a new Boot version.
-
-### `/spring:remove`
-
-Uninstall one or more components. Removes the skill directory and the corresponding `CLAUDE.md` block.
-
-```
-/spring:remove security
-/spring:remove --all
-```
-
-### `/spring:add`
-
-Install a single component without auto-detecting from build files. Useful for projects that don't use Boot, or for adding components outside the BOM.
-
-```
-/spring:add framework@6.2.1
-/spring:add cloud-gateway@2024.0.0
-```
-
-## How Claude Code uses installed skills
-
-After install, your project structure includes:
-
-```
-.claude/skills/
-├── spring-framework/
-│   ├── SKILL.md             ← Auto-loaded by Claude when relevant
-│   ├── manifest.json        ← Version, source URL, fetch timestamp
-│   ├── INDEX.md             ← Table of contents
-│   └── references/
-│       ├── core/
-│       │   ├── beans.md
-│       │   └── ...
-│       ├── web/
-│       │   ├── webmvc.md
-│       │   └── ...
-│       └── ...
-├── spring-boot/
-└── spring-security/
-```
-
-The generated `SKILL.md` carries a description like:
-
-```markdown
----
-name: spring-framework-docs
-description: Use when answering questions about Spring Framework 6.2.1
-  APIs, configuration, or behavior. Covers core IoC, web MVC, web reactive,
-  data access, transactions, AOP, and testing. Do NOT use for Spring Boot,
-  Security, or Cloud — use those dedicated skills instead.
----
-```
-
-Claude Code's auto-invocation matches this description against the conversation. When you ask a Spring Framework question, the skill loads, Claude consults the references, and answers with version-correct information.
-
-The plugin also appends a block to your project's `CLAUDE.md`:
-
-```markdown
-<!-- spring-skill:start -->
-## Spring References (managed by @pleaseai/spring)
-
-- Spring Framework **6.2.1** — see `.claude/skills/spring-framework/`
-- Spring Boot **3.5.0** — see `.claude/skills/spring-boot/`
-- Spring Security **6.4.0** — see `.claude/skills/spring-security/`
-
-When answering Spring questions, consult these references first.
-Do NOT mix information across major versions.
-<!-- spring-skill:end -->
-```
-
-The `<!-- spring-skill:start -->` markers let `/spring:remove` cleanly delete this block without touching anything else in your `CLAUDE.md`.
+Framework, Security, Data and Cloud are not published yet. When they are, resolving them is the same call with a different project key; BOM-based resolution of one declared Boot version into the whole component matrix belongs to that point, not before it.
 
 ## Plugin structure
 
 ```
-pleaseai/spring/
-├── .claude-plugin/
-│   └── plugin.json              ← Plugin manifest
-├── skills/                      ← Skills shipped with the plugin
-│   └── spring-installer/
-│       └── SKILL.md             ← Implements /spring:install behavior
-├── commands/                    ← Slash command entry points
-│   ├── install.md               ← /spring:install
-│   ├── list.md                  ← /spring:list
-│   ├── update.md                ← /spring:update
-│   ├── remove.md                ← /spring:remove
-│   └── add.md                   ← /spring:add
-├── scripts/                     ← Implementation invoked by skills
-│   ├── detect.ts                ← Build file parsing
-│   ├── resolve.ts               ← BOM-based version resolution
-│   ├── fetch.ts                 ← Docs download + conversion
-│   ├── install.ts               ← Skill installation
-│   └── lib/
-│       ├── antora-rules.ts      ← Antora-specific Turndown rules
-│       └── manifest.ts          ← .claude/skills/*/manifest.json schema
-├── prebuilt/                    ← Cached snapshot of spring-docs catalog
-│   └── catalog.json             ← Mirror of pleaseai/spring-docs/catalog.json (offline fallback)
-└── .github/workflows/
-    └── ci.yml                   ← typecheck / lint / test on PRs
+.claude-plugin/plugin.json     plugin manifest
+skills/spring-docs/SKILL.md    the skill Claude invokes
+scripts/detect.ts              build-file detection (Gradle Groovy/Kotlin, Maven)
+scripts/docs.ts                catalog lookup, download, verify, unpack
+scripts/lib/                   pure helpers — no I/O
+scripts/__tests__/             bun tests
 ```
 
-Archive generation lives in [`pleaseai/spring-docs`](https://github.com/pleaseai/spring-docs); this plugin only consumes its Releases.
-
-Per Claude Code conventions:
-- The manifest lives at `.claude-plugin/plugin.json` (only file in that directory)
-- All component directories (`skills/`, `commands/`, `scripts/`) live at plugin root
-- `${CLAUDE_PLUGIN_ROOT}` is used in any path reference inside skills/scripts
-
-## Version resolution
-
-Spring's ecosystem versioning is centralized through Spring Boot's BOM (`spring-boot-dependencies`). Once you pin Boot, the rest follows.
-
-Example: `build.gradle` with Boot 3.5.0:
-
-```groovy
-plugins {
-  id 'org.springframework.boot' version '3.5.0'
-  id 'io.spring.dependency-management' version '1.1.6'
-}
-```
-
-The plugin fetches `spring-boot-dependencies-3.5.0.pom` from Maven Central and reads:
-
-```xml
-<properties>
-  <spring-framework.version>6.2.1</spring-framework.version>
-  <spring-security.version>6.4.0</spring-security.version>
-  <spring-data-bom.version>2025.0.0</spring-data-bom.version>
-  ...
-</properties>
-```
-
-This becomes the source of truth for which doc versions to install. We do not maintain a separate compatibility matrix — the BOM is authoritative.
-
-For projects without Boot (rare), use `/spring:add` to install components individually with explicit versions.
-
-### Pre-release and EOL versions
-
-- **Pre-release** (RC, M1, SNAPSHOT): Not supported. Use the latest GA in your line.
-- **EOL versions**: Supported as long as upstream docs are reachable. The plugin emits a warning on install but proceeds.
-
-## Prebuilt archives
-
-To keep `/spring:install` fast, pre-converted Markdown archives are maintained in a **separate content repository**: [`pleaseai/spring-docs`](https://github.com/pleaseai/spring-docs). This plugin downloads matching archives from its GitHub Releases at install time. Splitting content from code keeps the plugin small (~1 MB), lets the conversion pipeline release on its own cadence, and makes the archives reusable by non-Claude-Code tools (Cursor, Continue, RAG indexes, etc.).
-
-Coverage maintained in `spring-docs`:
-
-| Component | Version lines maintained |
-|---|---|
-| spring-framework | Latest two minor lines |
-| spring-boot | Latest three minor lines |
-| spring-security | Latest two minor lines |
-| spring-data-jpa | Latest two minor lines |
-| spring-cloud | Latest year line |
-
-Archives are built nightly from upstream releases. If your project uses a version `spring-docs` doesn't have prebuilt, the plugin falls back to live conversion automatically — slower (~60s) but always works.
-
-To skip the prebuilt cache and always convert fresh:
-
-```
-/spring:install --no-prebuilt
-```
-
-Useful if you're debugging a conversion issue or want to verify a fresh build matches the release.
-
-## Manual fallback
-
-If your environment can't reach `github.com` or `docs.spring.io`, you can pre-stage archives:
-
-```bash
-# Download on a connected machine (tag scheme: <component>-<version>, e.g., framework-6.2.1)
-curl -L -o spring-framework-6.2.1.tar.gz \
-  https://github.com/pleaseai/spring-docs/releases/download/framework-6.2.1/spring-framework-6.2.1.tar.gz
-
-# Place in the plugin's offline cache
-mkdir -p ~/.cache/pleaseai-spring/archives/
-mv spring-framework-6.2.1.tar.gz ~/.cache/pleaseai-spring/archives/
-
-# Install reads from cache first
-/spring:install
-```
-
-## Configuration
-
-The plugin reads configuration from `.spring-skill.json` at project root. All fields optional.
-
-```json
-{
-  "components": ["framework", "boot", "security"],
-  "excludeComponents": ["data-r2dbc", "data-cassandra"],
-  "boot": "3.5.0",
-  "skipPrebuilt": false,
-  "claudeMdMarker": "spring-skill",
-  "skillsDir": ".claude/skills"
-}
-```
-
-CLI flags override this file, which overrides auto-detection.
-
-## Eval results
-
-We benchmark this plugin against bare Claude Code on a Spring task suite. Methodology and full results in [`evals/spring/`](evals/spring/).
-
-| Setup | Pass rate | Wrong-version errors | Avg cost |
-|---|---|---|---|
-| **`@pleaseai/spring` installed** | **94%** (47/50) | 0 | $1.42 |
-| Bare Claude Code | 62% (31/50) | 14 | $2.18 |
-| `WebFetch` of `docs.spring.io` per task | 78% (39/50) | 6 | $3.91 |
-
-The wrong-version errors are particularly stark: without versioned skills, Claude often answers with Spring 5.x patterns or pre-release features that don't exist in the user's actual version.
-
-## Comparison with related tools
-
-| Tool | Scope | Approach |
-|---|---|---|
-| **`@pleaseai/spring`** | Spring only | Versioned skills, BOM resolution, Antora-aware conversion |
-| `@pleaseai/ask` | Generic (npm/github/pypi/pub) | Lazy fetch via `ask src` / `ask docs` |
-| Context7 (MCP) | Generic | Live MCP server lookups |
-| `WebFetch` | Generic | Per-query HTTP fetch |
-
-We recommend installing both `@pleaseai/spring` and `@pleaseai/ask`. They complement each other:
-- Spring plugin handles Spring's Antora ecosystem and BOM resolution
-- ask handles everything else (Vue, React, Bun, your favorite npm package)
-
-They write to different skill directories and don't conflict.
+Archive generation is not here. The conversion pipeline (Antora, Asciidoctor, the Markdown converter) lives in [`pleaseai/spring-docs`](https://github.com/pleaseai/spring-docs); this plugin only consumes its releases.
 
 ## Development
 
 ```bash
-git clone https://github.com/pleaseai/spring
-cd spring
+git clone https://github.com/pleaseai/spring-plugin
+cd spring-plugin
 bun install
 
-# Run conversion locally against a specific version
-bun run scripts/fetch.ts framework 6.2.1 --output /tmp/spring-framework-6.2.1
+bun run typecheck          # tsc --noEmit
+bun run lint               # eslint --max-warnings 0
+bun test                   # bun test runner
 
-# Inspect the result
-ls /tmp/spring-framework-6.2.1/
-
-# Test plugin loading in Claude Code
+# Load it into Claude Code
 ln -s "$(pwd)" ~/.claude/plugins/spring
 ```
 
-Issues and PRs welcome. See [`CONTRIBUTING.md`](./CONTRIBUTING.md).
-
-### Local Development
-
-After cloning, install dev dependencies and run the toolchain:
-
-```bash
-bun install                # install dev deps from bun.lock
-bun run typecheck          # tsc --noEmit
-bun run lint               # eslint --max-warnings 0
-bun run lint:fix           # eslint --fix (auto-fix style + format)
-bun test                   # Bun test runner
-```
-
-Linting and formatting are unified through
-[`@pleaseai/eslint-config`](https://github.com/pleaseai/code-style/tree/main/packages/eslint-config)
-(built on `@antfu/eslint-config`) — no Prettier. A pre-commit hook
-(Husky + `lint-staged`) runs `eslint --fix` on staged files; the same checks
-run in CI on every PR via `.github/workflows/ci.yml`.
-
-### Project Layout
-
-```
-.claude-plugin/plugin.json     plugin manifest (only file in this directory)
-commands/                      slash command entry points (placeholder)
-skills/                        auto-loaded skills (placeholder)
-scripts/                       implementation scripts (placeholder)
-└── lib/__tests__/             placeholder test confirming bun test wiring
-.github/workflows/ci.yml       typecheck / lint / test on PRs
-.husky/pre-commit              lint-staged on commit
-.please/                       workspace state (specs, plans, knowledge)
-```
-
-The repository is currently a tooling skeleton — source files (`scripts/*.ts`,
-`skills/*/SKILL.md`, `commands/*.md`) land in subsequent feature tracks.
-
-## Licensing
-
-### Plugin code
-
-Licensed under **Apache-2.0**. See [`LICENSE`](./LICENSE).
-
-### Generated archives
-
-The Markdown archives live in [`pleaseai/spring-docs`](https://github.com/pleaseai/spring-docs) and each carries Spring's upstream license (Apache-2.0) in a `NOTICE` file pinned to the exact source commit. We do not relicense documentation content; we only change format.
-
-If you are a Spring maintainer and have concerns about how documentation is mirrored, please open an issue on [`pleaseai/spring-docs`](https://github.com/pleaseai/spring-docs/issues).
-
-## FAQ
-
-**Why not just use `WebFetch` per question?**
-Live fetching is slow, costs more in tokens, and gives Claude unstructured HTML. Pre-installed Markdown skills load instantly with version metadata baked in, and Claude's auto-invocation finds the right section without exploration.
-
-**Why a Boot-centric design? My project doesn't use Boot.**
-Most Spring projects do, and the BOM is the cleanest authoritative source for version resolution. For non-Boot projects, `/spring:add` lets you install components with explicit versions.
-
-**How do I share installed skills with my team?**
-Commit `.claude/skills/spring-*/` to your repo. The skills are plain Markdown — they version-control cleanly. Teammates skip the install step.
-
-**Does this work offline?**
-Yes, after one online install. Subsequent sessions read from `.claude/skills/` only. The "Manual fallback" section covers fully air-gapped setups.
-
-**What about Spring projects in Kotlin? Or with Gradle Kotlin DSL?**
-Both supported. The detector handles `build.gradle.kts` and works with Kotlin/Java/Groovy projects identically.
-
-**Can I use this without Claude Code?**
-The skill files are plain Markdown — any LLM tool that reads `.claude/skills/` or similar conventions can use them. But the slash commands (`/spring:install`) are Claude Code-specific.
-
-**Why does `spring-data-jpa` have its own skill, but not `spring-data-jdbc`?**
-We ship skills for components in the default coverage matrix. To install others, use `/spring:add data-jdbc@<version>`. Conversion happens live (no prebuilt) but works the same.
+Linting and formatting are unified through [`@pleaseai/eslint-config`](https://github.com/pleaseai/code-style/tree/main/packages/eslint-config) — no Prettier. Husky + `lint-staged` run `eslint --fix` on staged files, and CI runs the same checks on every PR.
 
 ## Related projects
 
-- [`@pleaseai/spring-docs`](https://github.com/pleaseai/spring-docs) — Content repository hosting the pre-converted Markdown archives this plugin downloads
-- [`@pleaseai/ask`](https://github.com/pleaseai/ask) — Generic library docs for Claude Code (npm, github, pypi, pub)
-- [Spring Framework](https://github.com/spring-projects/spring-framework) — Upstream
-- [Spring Boot](https://github.com/spring-projects/spring-boot) — Upstream
+- [`@pleaseai/spring-docs`](https://github.com/pleaseai/spring-docs) — the content repository this plugin reads
+- [`@pleaseai/ask`](https://github.com/pleaseai/ask) — generic library docs for Claude Code (npm, github, pypi, pub)
+- [Spring Boot](https://github.com/spring-projects/spring-boot) — upstream
+
+## Licensing
+
+Plugin code is Apache-2.0 ([`LICENSE`](./LICENSE)). The documentation archives keep Spring's upstream Apache-2.0 license: every archive ships a `NOTICE` pinned to the source commit, and nothing about the content's meaning is changed. Concerns about the mirroring belong on [`pleaseai/spring-docs`](https://github.com/pleaseai/spring-docs/issues).
 
 ---
 
