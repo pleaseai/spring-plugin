@@ -1,0 +1,21 @@
+skills/spring-docs/scripts/docs.mjs
+  s_470668577f69be::t_017cffb31ad8e8 162,170-173
+scripts/docs.ts
+  s_470668577f69be::t_017cffb31ad8e8 231-233,262-276
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.23",
+  "base_commit_sha": "026b141e269476b46fd3f3920e153986b9fd5e4b",
+  "prompts": {},
+  "sessions": {
+    "s_470668577f69be": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "48cea888-d038-4781-965d-4b1006ac4ed1",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Minsu Lee <minsu.lee@pleaseai.dev>"
+    }
+  }
+}
