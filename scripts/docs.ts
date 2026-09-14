@@ -24,10 +24,10 @@
 import type { Catalog } from './lib/docs-cache.ts'
 import { Buffer } from 'node:buffer'
 import { spawnSync } from 'node:child_process'
-import { createHash } from 'node:crypto'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
+import { createHash, randomUUID } from 'node:crypto'
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { dirname, join } from 'node:path'
+import { basename, dirname, join } from 'node:path'
 import process from 'node:process'
 import {
   archiveName,
@@ -36,6 +36,8 @@ import {
   checksumUrl,
   DOCS_REPO,
   docsCachePath,
+  isCatalog,
+  isSafeSegment,
   lookupTag,
   parseChecksum,
 } from './lib/docs-cache.ts'
@@ -104,7 +106,11 @@ function readPointer(cacheHome: string, project: string, version: string): strin
   if (!existsSync(path))
     return undefined
   const tag = readFileSync(path, 'utf8').trim()
-  return tag === '' ? undefined : tag
+  // A pointer names the directory this resolves to, so a corrupted or tampered
+  // one must not be able to point outside the cache.
+  if (!isSafeSegment(tag))
+    return undefined
+  return tag
 }
 
 function writePointer(cacheHome: string, project: string, version: string, tag: string): void {
@@ -113,6 +119,9 @@ function writePointer(cacheHome: string, project: string, version: string, tag: 
   writeFileSync(path, `${tag}\n`)
 }
 
+/** The table of contents every published tree carries; its absence means the tree is unusable. */
+const INDEX_FILE = '_index.md'
+
 function ready(
   project: string,
   version: string,
@@ -120,7 +129,7 @@ function ready(
   path: string,
   cached: boolean,
 ): ReadyResult {
-  return { kind: 'ready', project, version, tag, path, index: join(path, '_index.md'), cached }
+  return { kind: 'ready', project, version, tag, path, index: join(path, INDEX_FILE), cached }
 }
 
 function unavailable(
@@ -147,9 +156,90 @@ async function fetchText(fetchImpl: Fetcher, url: string): Promise<string | { er
   }
 }
 
+/** True when `path` holds a documentation tree a caller can actually read from. */
+function isUsableTree(path: string): boolean {
+  return existsSync(join(path, INDEX_FILE))
+}
+
+/**
+ * Move `extracted` into `target`, replacing whatever is there.
+ *
+ * Swaps rather than clearing first. `renameSync` refuses a non-empty target
+ * directory outright, so the old remove-then-rename lost a concurrent race with
+ * ENOTEMPTY after a good download; and clearing first left the shared path
+ * missing for as long as the delete took. Two renames still leave a window, but
+ * a metadata-only one rather than a whole-tree delete.
+ */
+function publish(extracted: string, target: string): void {
+  const displaced = existsSync(target) ? `${target}.replaced-${randomUUID()}` : undefined
+  if (displaced !== undefined)
+    renameSync(target, displaced)
+  try {
+    renameSync(extracted, target)
+  }
+  catch (err) {
+    // Never end emptier than we started: put the previous tree back. Unless a
+    // concurrent publisher already refilled the path — then its tree is the one
+    // callers read, and ours is debris rather than a restore candidate.
+    if (displaced !== undefined) {
+      if (existsSync(target))
+        discard(displaced)
+      else
+        renameSync(displaced, target)
+    }
+    throw err
+  }
+  // The new tree is published and readable from here on, so failing to delete
+  // the one it replaced is leftover debris, not a failed download.
+  if (displaced !== undefined)
+    discard(displaced)
+}
+
+/** Delete a directory nothing reads from any more, without failing the caller. */
+function discard(path: string): void {
+  try {
+    rmSync(path, { recursive: true, force: true })
+  }
+  catch {
+    // Left for `sweepLeftovers` on a later run.
+  }
+}
+
+/** How long a staging or displaced directory may sit before it counts as debris. */
+const LEFTOVER_TTL_MS = 60 * 60 * 1000
+
+/**
+ * Delete the staging and displaced directories a killed run left behind.
+ *
+ * Both are named after `target` and both are removed on every path that
+ * completes, so whatever is still here belongs either to a run in flight or to
+ * one that died mid-publication. Age separates them: downloading and extracting
+ * an archive takes seconds, so an hour-old directory has no owner left to
+ * break. Without this a crash leaks one whole documentation tree per occurrence
+ * and nothing ever reclaims it.
+ */
+function sweepLeftovers(target: string): void {
+  const parent = dirname(target)
+  const prefix = basename(target)
+  const cutoff = Date.now() - LEFTOVER_TTL_MS
+  for (const name of readdirSync(parent)) {
+    if (!name.startsWith(`${prefix}.staging-`) && !name.startsWith(`${prefix}.replaced-`))
+      continue
+    const path = join(parent, name)
+    try {
+      if (statSync(path).mtimeMs < cutoff)
+        rmSync(path, { recursive: true, force: true })
+    }
+    catch {
+      // Reclaiming disk is never worth failing a download over.
+    }
+  }
+}
+
 /** Unpack `archive` and move the single top-level directory it holds to `target`. */
 function unpack(archive: Buffer, project: string, version: string, target: string): void {
   mkdirSync(dirname(target), { recursive: true })
+  sweepLeftovers(target)
   // Staged next to the target so the rename below stays on one filesystem, and
   // so a crash mid-extraction never leaves a half-written tree under the name
   // callers read from.
@@ -168,10 +258,13 @@ function unpack(archive: Buffer, project: string, version: string, target: strin
     const extracted = join(staging, `${project}-${version}`)
     if (!existsSync(extracted))
       throw new Error(`archive does not contain ${project}-${version}/`)
+    // Checked before publication, not after: a correctly checksummed but
+    // mispackaged archive would otherwise be cached as ready with an index
+    // path that does not resolve.
+    if (!isUsableTree(extracted))
+      throw new Error(`archive does not contain ${project}-${version}/${INDEX_FILE}`)
 
-    if (existsSync(target))
-      rmSync(target, { recursive: true, force: true })
-    renameSync(extracted, target)
+    publish(extracted, target)
   }
   finally {
     rmSync(staging, { recursive: true, force: true })
@@ -190,10 +283,20 @@ export async function resolveDocs(options: ResolveOptions): Promise<ResolveResul
   const fetchImpl = options.fetchImpl ?? ((url: string) => fetch(url))
   const cacheHome = cacheHomeOf(options.cacheHome)
 
+  // Both are joined into cache paths and into the archive URL, so they are
+  // checked here, at the boundary, rather than at each use.
+  if (!isSafeSegment(project) || !isSafeSegment(version)) {
+    return unavailable(
+      project,
+      version,
+      'project and version may contain only letters, digits, dot, plus, hyphen and underscore',
+    )
+  }
+
   if (noFetch) {
     const tag = readPointer(cacheHome, project, version)
     const path = tag === undefined ? undefined : docsCachePath(cacheHome, tag)
-    if (tag === undefined || path === undefined || !existsSync(path)) {
+    if (tag === undefined || path === undefined || !isUsableTree(path)) {
       return unavailable(
         project,
         version,
@@ -211,13 +314,16 @@ export async function resolveDocs(options: ResolveOptions): Promise<ResolveResul
   if (typeof catalogText !== 'string')
     return unavailable(project, version, catalogText.error, 'check network access to raw.githubusercontent.com')
 
-  let catalog: Catalog
+  let parsed: unknown
   try {
-    catalog = JSON.parse(catalogText) as Catalog
+    parsed = JSON.parse(catalogText)
   }
   catch (err) {
     return unavailable(project, version, `catalog.json is not valid JSON: ${err instanceof Error ? err.message : String(err)}`)
   }
+  if (!isCatalog(parsed))
+    return unavailable(project, version, 'catalog.json does not have the expected shape', 'update the plugin')
+  const catalog: Catalog = parsed
 
   const lookup = lookupTag(catalog, project, version)
   switch (lookup.kind) {
@@ -245,8 +351,19 @@ export async function resolveDocs(options: ResolveOptions): Promise<ResolveResul
   }
 
   const { tag } = lookup
+  if (!isSafeSegment(tag)) {
+    return unavailable(
+      project,
+      version,
+      `catalog.json maps ${project} ${version} to an unusable tag "${tag}"`,
+      `report it at https://github.com/${DOCS_REPO}/issues`,
+    )
+  }
+
   const target = docsCachePath(cacheHome, tag)
-  if (existsSync(target) && !refresh) {
+  // An incomplete tree falls through to a re-download rather than failing:
+  // repairing it is exactly what this function is for.
+  if (isUsableTree(target) && !refresh) {
     writePointer(cacheHome, project, version, tag)
     return ready(project, version, tag, target, true)
   }

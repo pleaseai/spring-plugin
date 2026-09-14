@@ -98,11 +98,71 @@ export function checksumUrl(tag: string, project: string, version: string): stri
 }
 
 /**
+ * True when `value` has the shape {@link lookupTag} reads.
+ *
+ * `catalog.json` is fetched over the network, so its shape is an assumption
+ * until checked. A bare `as Catalog` lets a valid-JSON body like `null` or
+ * `{"version":"1"}` throw a TypeError deep inside the lookup, which the CLI
+ * reports as an internal error instead of the documented unavailable result.
+ */
+export function isCatalog(value: unknown): value is Catalog {
+  if (!isObjectMap(value))
+    return false
+  if (typeof value.version !== 'string')
+    return false
+  const { projects } = value
+  if (!isObjectMap(projects))
+    return false
+  return Object.values(projects).every(isVersionMap)
+}
+
+function isVersionMap(value: unknown): boolean {
+  if (!isObjectMap(value))
+    return false
+  return Object.values(value).every((entry) => {
+    if (!isObjectMap(entry))
+      return false
+    return typeof entry.tag === 'string'
+  })
+}
+
+/**
+ * True when `value` is a plain keyed object.
+ *
+ * `typeof` alone answers `'object'` for both `null` and an array, so a bare
+ * typeof check accepts `{"projects": []}` as a map of projects. It reads as
+ * empty rather than failing, which is how a malformed catalog turns into a
+ * confident "unknown project" instead of the schema error it is.
+ */
+function isObjectMap(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+/** Characters a project, version or tag may contain to stay one path segment. */
+const SAFE_SEGMENT_RE = /^[\w.+-]+$/
+
+/**
+ * True when `value` can be joined into a cache path without leaving it.
+ *
+ * A charset test alone is not enough: `.` and `..` are spelled entirely in
+ * allowed characters, and `join(home, subdir, '..')` climbs out of the cache
+ * just as effectively as a slash would. Both are rejected by name.
+ */
+export function isSafeSegment(value: string): boolean {
+  if (value === '.' || value === '..')
+    return false
+  return SAFE_SEGMENT_RE.test(value)
+}
+
+/**
  * Directory holding one unpacked archive.
  *
  * Keyed by tag, not by version: a `+rebuild.N` tag is a different archive for
  * the same version, and keying by version would keep serving the superseded
  * tree from cache forever.
+ *
+ * Callers must pass a tag {@link isSafeSegment} accepts — this joins whatever
+ * it is given, and the tree it names is both read from and `rmSync`'d.
  */
 export function docsCachePath(cacheHome: string, tag: string): string {
   return join(cacheHome, DOCS_CACHE_SUBDIR, tag)

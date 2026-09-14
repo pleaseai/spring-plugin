@@ -6,10 +6,10 @@
 // scripts/docs.ts
 import { Buffer } from "buffer";
 import { spawnSync } from "child_process";
-import { createHash } from "crypto";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from "fs";
+import { createHash, randomUUID } from "crypto";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "fs";
 import { homedir } from "os";
-import { dirname, join as join2 } from "path";
+import { basename, dirname, join as join2 } from "path";
 import process from "process";
 
 // scripts/lib/docs-cache.ts
@@ -37,6 +37,34 @@ function archiveUrl(tag, project, version) {
 }
 function checksumUrl(tag, project, version) {
   return `${archiveUrl(tag, project, version)}.sha256`;
+}
+function isCatalog(value) {
+  if (!isObjectMap(value))
+    return false;
+  if (typeof value.version !== "string")
+    return false;
+  const { projects } = value;
+  if (!isObjectMap(projects))
+    return false;
+  return Object.values(projects).every(isVersionMap);
+}
+function isVersionMap(value) {
+  if (!isObjectMap(value))
+    return false;
+  return Object.values(value).every((entry) => {
+    if (!isObjectMap(entry))
+      return false;
+    return typeof entry.tag === "string";
+  });
+}
+function isObjectMap(value) {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+var SAFE_SEGMENT_RE = /^[\w.+-]+$/;
+function isSafeSegment(value) {
+  if (value === "." || value === "..")
+    return false;
+  return SAFE_SEGMENT_RE.test(value);
 }
 function docsCachePath(cacheHome, tag) {
   return join(cacheHome, DOCS_CACHE_SUBDIR, tag);
@@ -68,7 +96,9 @@ function readPointer(cacheHome, project, version) {
   if (!existsSync(path))
     return;
   const tag = readFileSync(path, "utf8").trim();
-  return tag === "" ? undefined : tag;
+  if (!isSafeSegment(tag))
+    return;
+  return tag;
 }
 function writePointer(cacheHome, project, version, tag) {
   const path = pointerPath(cacheHome, project, version);
@@ -76,8 +106,9 @@ function writePointer(cacheHome, project, version, tag) {
   writeFileSync(path, `${tag}
 `);
 }
+var INDEX_FILE = "_index.md";
 function ready(project, version, tag, path, cached) {
-  return { kind: "ready", project, version, tag, path, index: join2(path, "_index.md"), cached };
+  return { kind: "ready", project, version, tag, path, index: join2(path, INDEX_FILE), cached };
 }
 function unavailable(project, version, reason, suggestion) {
   return suggestion === undefined ? { kind: "unavailable", project, version, reason } : { kind: "unavailable", project, version, reason, suggestion };
@@ -92,8 +123,50 @@ async function fetchText(fetchImpl, url) {
     return { error: `GET ${url} failed: ${err instanceof Error ? err.message : String(err)}` };
   }
 }
+function isUsableTree(path) {
+  return existsSync(join2(path, INDEX_FILE));
+}
+function publish(extracted, target) {
+  const displaced = existsSync(target) ? `${target}.replaced-${randomUUID()}` : undefined;
+  if (displaced !== undefined)
+    renameSync(target, displaced);
+  try {
+    renameSync(extracted, target);
+  } catch (err) {
+    if (displaced !== undefined) {
+      if (existsSync(target))
+        discard(displaced);
+      else
+        renameSync(displaced, target);
+    }
+    throw err;
+  }
+  if (displaced !== undefined)
+    discard(displaced);
+}
+function discard(path) {
+  try {
+    rmSync(path, { recursive: true, force: true });
+  } catch {}
+}
+var LEFTOVER_TTL_MS = 60 * 60 * 1000;
+function sweepLeftovers(target) {
+  const parent = dirname(target);
+  const prefix = basename(target);
+  const cutoff = Date.now() - LEFTOVER_TTL_MS;
+  for (const name of readdirSync(parent)) {
+    if (!name.startsWith(`${prefix}.staging-`) && !name.startsWith(`${prefix}.replaced-`))
+      continue;
+    const path = join2(parent, name);
+    try {
+      if (statSync(path).mtimeMs < cutoff)
+        rmSync(path, { recursive: true, force: true });
+    } catch {}
+  }
+}
 function unpack(archive, project, version, target) {
   mkdirSync(dirname(target), { recursive: true });
+  sweepLeftovers(target);
   const staging = mkdtempSync(`${target}.staging-`);
   try {
     const archivePath = join2(staging, archiveName(project, version));
@@ -106,9 +179,9 @@ function unpack(archive, project, version, target) {
     const extracted = join2(staging, `${project}-${version}`);
     if (!existsSync(extracted))
       throw new Error(`archive does not contain ${project}-${version}/`);
-    if (existsSync(target))
-      rmSync(target, { recursive: true, force: true });
-    renameSync(extracted, target);
+    if (!isUsableTree(extracted))
+      throw new Error(`archive does not contain ${project}-${version}/${INDEX_FILE}`);
+    publish(extracted, target);
   } finally {
     rmSync(staging, { recursive: true, force: true });
   }
@@ -117,10 +190,13 @@ async function resolveDocs(options) {
   const { project, version, refresh = false, noFetch = false } = options;
   const fetchImpl = options.fetchImpl ?? ((url) => fetch(url));
   const cacheHome = cacheHomeOf(options.cacheHome);
+  if (!isSafeSegment(project) || !isSafeSegment(version)) {
+    return unavailable(project, version, "project and version may contain only letters, digits, dot, plus, hyphen and underscore");
+  }
   if (noFetch) {
     const tag = readPointer(cacheHome, project, version);
     const path = tag === undefined ? undefined : docsCachePath(cacheHome, tag);
-    if (tag === undefined || path === undefined || !existsSync(path)) {
+    if (tag === undefined || path === undefined || !isUsableTree(path)) {
       return unavailable(project, version, `${project} ${version} is not in the local cache`, "drop --no-fetch to download it");
     }
     return ready(project, version, tag, path, true);
@@ -128,12 +204,15 @@ async function resolveDocs(options) {
   const catalogText = await fetchText(fetchImpl, CATALOG_URL);
   if (typeof catalogText !== "string")
     return unavailable(project, version, catalogText.error, "check network access to raw.githubusercontent.com");
-  let catalog;
+  let parsed;
   try {
-    catalog = JSON.parse(catalogText);
+    parsed = JSON.parse(catalogText);
   } catch (err) {
     return unavailable(project, version, `catalog.json is not valid JSON: ${err instanceof Error ? err.message : String(err)}`);
   }
+  if (!isCatalog(parsed))
+    return unavailable(project, version, "catalog.json does not have the expected shape", "update the plugin");
+  const catalog = parsed;
   const lookup = lookupTag(catalog, project, version);
   switch (lookup.kind) {
     case "schema":
@@ -144,8 +223,11 @@ async function resolveDocs(options) {
       return unavailable(project, version, `${DOCS_REPO} has not published ${project} ${version}`, `open an issue at https://github.com/${DOCS_REPO}/issues to have it built`);
   }
   const { tag } = lookup;
+  if (!isSafeSegment(tag)) {
+    return unavailable(project, version, `catalog.json maps ${project} ${version} to an unusable tag "${tag}"`, `report it at https://github.com/${DOCS_REPO}/issues`);
+  }
   const target = docsCachePath(cacheHome, tag);
-  if (existsSync(target) && !refresh) {
+  if (isUsableTree(target) && !refresh) {
     writePointer(cacheHome, project, version, tag);
     return ready(project, version, tag, target, true);
   }

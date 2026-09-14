@@ -1,7 +1,7 @@
 import type { Fetcher } from '../docs.ts'
 import { Buffer } from 'node:buffer'
 import { createHash } from 'node:crypto'
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
@@ -206,5 +206,158 @@ describe('resolveDocs', () => {
     expect(missing.kind).toBe('unavailable')
     if (missing.kind === 'unavailable')
       expect(missing.suggestion).toContain('--no-fetch')
+  })
+
+  test('refuses a project or version that would escape the cache directory', async () => {
+    const offline: Fetcher = async () => {
+      throw new Error('network used')
+    }
+    const result = await resolveDocs({ project: PROJECT, version: '../../../../tmp/pwned', cacheHome, fetchImpl: offline })
+
+    expect(result.kind).toBe('unavailable')
+    if (result.kind === 'unavailable')
+      expect(result.reason).toContain('may contain only')
+  })
+
+  test('ignores a pointer file that names a tag outside the cache', async () => {
+    const pointer = `${docsCachePath(cacheHome, `${PROJECT}-${VERSION}`)}.tag`
+    mkdirSync(join(pointer, '..'), { recursive: true })
+    writeFileSync(pointer, '../../../../tmp\n')
+    const offline: Fetcher = async () => {
+      throw new Error('network used')
+    }
+    const result = await resolveDocs({ project: PROJECT, version: VERSION, cacheHome, fetchImpl: offline, noFetch: true })
+
+    expect(result.kind).toBe('unavailable')
+  })
+
+  test('refuses a catalog tag that would escape the cache directory', async () => {
+    const fetchImpl: Fetcher = async (url) => {
+      if (url === CATALOG_URL)
+        return respond(catalogJson('../../../../tmp/pwned'))
+      throw new Error('network used')
+    }
+    const result = await resolveDocs({ project: PROJECT, version: VERSION, cacheHome, fetchImpl })
+
+    expect(result.kind).toBe('unavailable')
+    if (result.kind === 'unavailable')
+      expect(result.reason).toContain('unusable tag')
+  })
+
+  test('reports a catalog whose shape it cannot read instead of throwing', async () => {
+    const fetchImpl: Fetcher = async (url) => {
+      if (url === CATALOG_URL)
+        return respond('{"version":"1"}')
+      throw new Error('network used')
+    }
+    const result = await resolveDocs({ project: PROJECT, version: VERSION, cacheHome, fetchImpl })
+
+    expect(result.kind).toBe('unavailable')
+    if (result.kind === 'unavailable')
+      expect(result.reason).toContain('expected shape')
+  })
+
+  test('refuses an archive that carries no table of contents', async () => {
+    const archive = buildArchive(fixtures, `${PROJECT}-${VERSION}`)
+    // Rebuild the tree without `_index.md`, keeping the checksum honest.
+    rmSync(join(fixtures, `${PROJECT}-${VERSION}`), { recursive: true, force: true })
+    const tree = join(fixtures, `${PROJECT}-${VERSION}`)
+    mkdirSync(tree, { recursive: true })
+    writeFileSync(join(tree, 'how-to.md'), '# How-to\n')
+    const indexless = Bun.spawnSync(['tar', '-czf', join(fixtures, 'indexless.tar.gz'), '-C', fixtures, `${PROJECT}-${VERSION}`])
+    if (indexless.exitCode !== 0)
+      throw new Error('tar failed')
+    const bytes = Buffer.from(readFileSync(join(fixtures, 'indexless.tar.gz')))
+    const digest = createHash('sha256').update(bytes).digest('hex')
+    expect(archive.length).toBeGreaterThan(0)
+
+    const fetchImpl: Fetcher = async (url) => {
+      if (url === CATALOG_URL)
+        return respond(catalogJson(TAG))
+      if (url === checksumUrl(TAG, PROJECT, VERSION))
+        return respond(`${digest}  ${archiveName(PROJECT, VERSION)}\n`)
+      return respond(bytes)
+    }
+    const result = await resolveDocs({ project: PROJECT, version: VERSION, cacheHome, fetchImpl })
+
+    expect(result.kind).toBe('unavailable')
+    if (result.kind === 'unavailable')
+      expect(result.reason).toContain('_index.md')
+    expect(existsSync(docsCachePath(cacheHome, TAG))).toBe(false)
+  })
+
+  test('re-downloads over a cached tree that lost its table of contents', async () => {
+    const archive = buildArchive(fixtures, `${PROJECT}-${VERSION}`)
+    const digest = createHash('sha256').update(archive).digest('hex')
+    let archiveRequests = 0
+    const fetchImpl: Fetcher = async (url) => {
+      if (url === CATALOG_URL)
+        return respond(catalogJson(TAG))
+      if (url === checksumUrl(TAG, PROJECT, VERSION))
+        return respond(`${digest}  ${archiveName(PROJECT, VERSION)}\n`)
+      archiveRequests += 1
+      return respond(archive)
+    }
+    await resolveDocs({ project: PROJECT, version: VERSION, cacheHome, fetchImpl })
+    // A tree left incomplete by an older client is not a cache hit.
+    rmSync(join(docsCachePath(cacheHome, TAG), '_index.md'))
+
+    const repaired = await resolveDocs({ project: PROJECT, version: VERSION, cacheHome, fetchImpl })
+
+    expect(archiveRequests).toBe(2)
+    expect(repaired.kind === 'ready' && repaired.cached).toBe(false)
+    expect(existsSync(join(docsCachePath(cacheHome, TAG), '_index.md'))).toBe(true)
+    expect(readdirSync(cacheHome).length).toBeGreaterThan(0)
+  })
+
+  test('replaces an existing tree without leaving the cache path missing', async () => {
+    const archive = buildArchive(fixtures, `${PROJECT}-${VERSION}`, '# First\n')
+    const digest = createHash('sha256').update(archive).digest('hex')
+    const fetchImpl: Fetcher = async (url) => {
+      if (url === CATALOG_URL)
+        return respond(catalogJson(TAG))
+      if (url === checksumUrl(TAG, PROJECT, VERSION))
+        return respond(`${digest}  ${archiveName(PROJECT, VERSION)}\n`)
+      return respond(archive)
+    }
+    await resolveDocs({ project: PROJECT, version: VERSION, cacheHome, fetchImpl })
+    // --refresh publishes over a populated directory; renameSync refuses one
+    // outright, so this is the case the swap exists for.
+    const refreshed = await resolveDocs({ project: PROJECT, version: VERSION, cacheHome, fetchImpl, refresh: true })
+
+    expect(refreshed.kind).toBe('ready')
+    expect(readFileSync(join(docsCachePath(cacheHome, TAG), '_index.md'), 'utf8')).toBe('# First\n')
+    // No staging or displaced directory survives the publication.
+    const leftovers = readdirSync(join(cacheHome, '.cache/pleaseai-spring/docs')).filter(n => n.includes('.staging-') || n.includes('.replaced-'))
+    expect(leftovers).toEqual([])
+  })
+
+  test('reclaims debris a killed run left behind, but not a run in flight', async () => {
+    const archive = buildArchive(fixtures, `${PROJECT}-${VERSION}`, '# First\n')
+    const digest = createHash('sha256').update(archive).digest('hex')
+    const fetchImpl: Fetcher = async (url) => {
+      if (url === CATALOG_URL)
+        return respond(catalogJson(TAG))
+      if (url === checksumUrl(TAG, PROJECT, VERSION))
+        return respond(`${digest}  ${archiveName(PROJECT, VERSION)}\n`)
+      return respond(archive)
+    }
+    await resolveDocs({ project: PROJECT, version: VERSION, cacheHome, fetchImpl })
+
+    // A process killed between the two renames leaves its displaced tree named
+    // after the target and never comes back for it; a live run's staging
+    // directory is named the same way and still has an owner.
+    const target = docsCachePath(cacheHome, TAG)
+    const abandoned = `${target}.replaced-abandoned`
+    const inFlight = `${target}.staging-live`
+    mkdirSync(abandoned, { recursive: true })
+    mkdirSync(inFlight, { recursive: true })
+    const longAgo = new Date(Date.now() - 2 * 60 * 60 * 1000)
+    utimesSync(abandoned, longAgo, longAgo)
+
+    await resolveDocs({ project: PROJECT, version: VERSION, cacheHome, fetchImpl, refresh: true })
+
+    expect(existsSync(abandoned)).toBe(false)
+    expect(existsSync(inFlight)).toBe(true)
   })
 })

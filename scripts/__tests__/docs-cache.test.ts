@@ -5,6 +5,8 @@ import {
   archiveUrl,
   checksumUrl,
   docsCachePath,
+  isCatalog,
+  isSafeSegment,
   lookupTag,
   parseChecksum,
 } from '../lib/docs-cache.ts'
@@ -81,5 +83,48 @@ describe('parseChecksum', () => {
   test('rejects malformed input', () => {
     expect(parseChecksum('', 'boot-4.1.1.tar.gz')).toBeUndefined()
     expect(parseChecksum('not-a-digest  boot-4.1.1.tar.gz', 'boot-4.1.1.tar.gz')).toBeUndefined()
+  })
+})
+
+describe('isSafeSegment', () => {
+  test('accepts the project, version and rebuild-tag spellings the catalog uses', () => {
+    expect(isSafeSegment('boot')).toBe(true)
+    expect(isSafeSegment('3.5.16')).toBe(true)
+    expect(isSafeSegment('boot-4.1.1+rebuild.1')).toBe(true)
+  })
+
+  test('rejects the traversal segments a charset test alone would admit', () => {
+    // Both are spelled entirely in allowed characters, and joining either one
+    // climbs out of the cache directory.
+    expect(isSafeSegment('..')).toBe(false)
+    expect(isSafeSegment('.')).toBe(false)
+  })
+
+  test('rejects separators and the empty string', () => {
+    expect(isSafeSegment('../../etc')).toBe(false)
+    expect(isSafeSegment('a/b')).toBe(false)
+    expect(isSafeSegment('a\\b')).toBe(false)
+    expect(isSafeSegment('')).toBe(false)
+  })
+})
+
+describe('isCatalog', () => {
+  test('accepts a well-formed catalog', () => {
+    expect(isCatalog(CATALOG)).toBe(true)
+  })
+
+  test('rejects valid JSON that lookupTag would throw on', () => {
+    expect(isCatalog(null)).toBe(false)
+    expect(isCatalog({ version: '1' })).toBe(false)
+    expect(isCatalog({ version: 1, projects: {} })).toBe(false)
+  })
+
+  test('rejects an entry with no tag', () => {
+    expect(isCatalog({ version: '1', projects: { boot: { '3.5.16': { released_at: null } } } })).toBe(false)
+  })
+
+  test('rejects an array where a keyed map is required', () => {
+    expect(isCatalog({ version: '1', projects: [] })).toBe(false)
+    expect(isCatalog({ version: '1', projects: { boot: [] } })).toBe(false)
   })
 })
