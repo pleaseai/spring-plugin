@@ -1,0 +1,35 @@
+scripts/docs.ts
+  s_470668577f69be::t_905e28d251ae83 40,109-113,286-294,354-362
+  s_470668577f69be::t_a79110815e1bac 27,39,122-124,132,159-180,190-191,194,261-265,267,299,317,319,324-326,364-366
+  s_470668577f69be::t_70a99c729c6f0e 28,30,181-189,192-193,195-238,242
+  s_470668577f69be::t_9ad537be7530e6 295
+scripts/__tests__/docs-cache.test.ts
+  s_470668577f69be::t_aee774b80f7059 8-9,88-123,130
+  s_470668577f69be::t_660fd804cfb84e 124-129
+scripts/__tests__/docs.test.ts
+  s_470668577f69be::t_0451cc05fe8de2 210-332,362
+  s_470668577f69be::t_8be6caf5e54dbd 4,333-361
+skills/spring-docs/scripts/docs.js
+  s_470668577f69be::t_cfe19d2ca83862 10,12,42,44,46-47,52,55,60-62,136-141,145-166,169
+  s_470668577f69be::t_a055c8a63b2ee7 9,41,43,45,48-51,53-54,56-59,63-68,99-101,109,111,126-135,142-144,182-184,193-195,199,207,209,213-215,226-228,230
+scripts/lib/docs-cache.ts
+  s_470668577f69be::t_ed58adcf3cb5a5 100-108,110,112,115-119,121,124,126,139-140
+  s_470668577f69be::t_278db342733c43 109,111,113-114,120,122-123,125,127-138
+  s_470668577f69be::t_3ca72fbced4ab6 141-156,163-165
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.23",
+  "base_commit_sha": "aa406d7da84573edc63242379b379b4eb4f23a9b",
+  "prompts": {},
+  "sessions": {
+    "s_470668577f69be": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "48cea888-d038-4781-965d-4b1006ac4ed1",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Minsu Lee <minsu.lee@pleaseai.dev>"
+    }
+  }
+}
