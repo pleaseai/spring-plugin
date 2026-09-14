@@ -12,17 +12,59 @@ Two scripts and one skill are implemented: build-file detection, documentation r
 
 ## Install
 
+### As a Claude Code plugin
+
+Register the marketplace once, then install:
+
+```
+/plugin marketplace add pleaseai/claude-code-plugins
+/plugin install spring@pleaseai
+```
+
+Or from the command line, outside a session:
+
+```bash
+claude plugin marketplace add pleaseai/claude-code-plugins
+claude plugin install spring@pleaseai
+```
+
+To pin it per project instead, commit the equivalent to `.claude/settings.json`:
+
+```json
+{
+  "extraKnownMarketplaces": {
+    "pleaseai": {
+      "source": { "source": "github", "repo": "pleaseai/claude-code-plugins" }
+    }
+  },
+  "enabledPlugins": { "spring@pleaseai": true }
+}
+```
+
+### As a standalone skill
+
 ```bash
 npx skills add pleaseai/spring-plugin
 ```
 
 This installs the `spring-docs` skill for whichever agents the
-[`skills` CLI](https://github.com/vercel-labs/skills) detects. It copies only the
-skill directory, which is why the scripts it runs are committed as
-dependency-free bundles inside it.
+[`skills` CLI](https://github.com/vercel-labs/skills) detects — Claude Code,
+Cursor, Codex and others. It copies only the skill directory and runs no
+dependency install, which is why the scripts it runs are committed as
+dependency-free `.mjs` bundles inside it.
 
-The same directory also loads as a Claude Code plugin. There is no marketplace
-entry yet, so that route is the symlink under [Development](#development).
+### Which one
+
+| | Plugin | `npx skills` |
+|---|---|---|
+| Agents | Claude Code only | Every agent the `skills` CLI supports |
+| Updates | `/plugin update spring@pleaseai` | Re-run `npx skills add` |
+
+Both install the same `spring-docs` skill, and it behaves identically in either:
+the skill addresses its scripts through `${CLAUDE_SKILL_DIR}` and runs the
+committed `.mjs` bundles with `node`, so it needs nothing above its own
+directory. Installing both is redundant rather than harmful — the skill writes
+nothing into your project either way.
 
 ## What it does
 
