@@ -1,23 +1,9 @@
 {
   "enabledPlugins": {
-    "gh-please@passionfactory": true,
-    "scaffold@passionfactory": true,
-    "please@passionfactory": true,
-    "review@passionfactory": true,
-    "github@passionfactory": true,
-    "standards@passionfactory": true,
-    "dev-tools@passionfactory": true,
-    "gardening@passionfactory": true,
     "claude-md-management@pleaseai": true,
     "vitest@pleaseai": true,
     "typescript-lsp@code-intelligence": true,
     "eslint-lsp@code-intelligence": true,
-    "ask@passionfactory": true,
-    "github-actions@passionfactory": true,
-    "tidy-first@passionfactory": true,
-    "context@passionfactory": true,
-    "research@passionfactory": true,
-    "claude-code-docs@pleaseai": true,
-    "kb@passionfactory": true
+    "claude-code-docs@pleaseai": true
   }
 }
