@@ -1,0 +1,52 @@
+scripts/docs.ts
+  s_470668577f69be::t_9f27945504775e 16,26,160-164
+ARCHITECTURE.md
+  s_470668577f69be::t_f15a9623476e53 45-46,49,97
+  s_470668577f69be::t_c6c70c2c9fb9da 114,116-120
+skills/spring-docs/SKILL.md
+  s_470668577f69be::t_0f3376bd1c788b 3-5
+  s_470668577f69be::t_358bc4f75106ce 21,46,50
+.github/workflows/ci.yml
+  s_470668577f69be::t_30ab21ca901c24 32,43-44
+  s_470668577f69be::t_e6877f2c17ec55 45
+.please/docs/knowledge/tech-stack.md
+  s_470668577f69be::t_e2641a97dc4c36 26-31,33-40,82-85
+eslint.config.js
+  s_470668577f69be::t_30ab21ca901c24 9-10
+.please/docs/knowledge/gotchas.md
+  s_470668577f69be::t_e2641a97dc4c36 11-14
+.please/docs/tracks/tech-debt-tracker.md
+  s_470668577f69be::t_e2641a97dc4c36 20
+skills/spring-docs/scripts/detect.js
+  s_470668577f69be::t_1817d89fd2edf3 4579
+  s_470668577f69be::t_b3d6d26ec3df1a 1-4578,4580-4587
+skills/spring-docs/scripts/docs.js
+  s_470668577f69be::t_b3d6d26ec3df1a 1-223,225-231
+  s_470668577f69be::t_1817d89fd2edf3 224
+package.json
+  s_470668577f69be::t_a2a777e3402b26 19-20
+scripts/build-skill.ts
+  s_470668577f69be::t_0f3376bd1c788b 26-27,64
+  s_470668577f69be::t_c9767b0452c615 47-54
+  s_470668577f69be::t_baadaaab7ab9dc 1-25,28-46,55-63,65-100
+README.md
+  s_470668577f69be::t_2c1aa08668dc9a 78-79
+  s_470668577f69be::t_c6c70c2c9fb9da 13-18,21-23,32-33,52,108,111,128
+  s_470668577f69be::t_69f157ca1f464e 19-20,24-26
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.23",
+  "base_commit_sha": "5ee4e84983c965af970d4b9dc3821d0641aa98a1",
+  "prompts": {},
+  "sessions": {
+    "s_470668577f69be": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "48cea888-d038-4781-965d-4b1006ac4ed1",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Minsu Lee <minsu.lee@pleaseai.dev>"
+    }
+  }
+}
