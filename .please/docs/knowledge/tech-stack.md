@@ -8,7 +8,7 @@
 - **What**: JavaScript runtime for executing plugin scripts.
 - **Why**: Fast startup (~10ms vs ~80ms for Node), built-in TypeScript without a bundler, native fetch/glob APIs.
 - **Where**: `scripts/*.ts` files invoked by skills and slash commands.
-- **Version target**: latest stable (≥1.3). The committed `bun.lock` uses Bun's text-format lockfile (default since 1.3); Bun 1.1.x cannot read it. `package.json` `engines.bun` enforces this floor.
+- **Version target**: latest stable. The committed `bun.lock` uses Bun's text-format lockfile (default since 1.3); Bun 1.1.x cannot read it. `engines.bun` sits above that at `>=1.4.2`, matching `ci.yml`'s pin, because `build:skill:check` byte-compares the committed bundles against CI's codegen — an older Bun regenerates them differently and fails the gate on an untouched tree.
 
 ### Node fallback
 - **Why**: Some users may not have Bun. Scripts should not rely on Bun-only globals (`Bun.file`, `Bun.serve`) unless the README documents a Bun requirement.
@@ -23,13 +23,21 @@
 
 ## Plugin Architecture
 
-### Claude Code plugin conventions
-- Manifest at `.claude-plugin/plugin.json` (only file in that dir).
-- Components (`skills/`, `commands/`, `scripts/`) at plugin root.
-- Path references use `${CLAUDE_PLUGIN_ROOT}` inside skills and scripts.
+### Two install channels
+The skill ships both as a Claude Code plugin and as a standalone skill installed
+with `npx skills` ([vercel-labs/skills](https://github.com/vercel-labs/skills)).
+The second channel copies **only** the `skills/spring-docs/` directory, so it has
+no plugin root, no `node_modules`, and no dependency install. Everything the
+skill executes at runtime therefore lives inside its own directory.
 
-### Slash commands
-Each slash command is a thin Markdown file in `commands/` that references a skill or invokes a script. Commands are entry points only — logic lives in skills/scripts.
+- Manifest at `.claude-plugin/plugin.json` (only file in that dir).
+- TypeScript sources stay at the plugin root (`scripts/`) where tests, typecheck
+  and lint reach them.
+- `bun run build:skill` bundles them into `skills/spring-docs/scripts/*.mjs` —
+  dependency-free, committed, and run with `node`.
+- Skill content references scripts through `${CLAUDE_SKILL_DIR}`, which resolves
+  at the personal, project **and** plugin level. `${CLAUDE_PLUGIN_ROOT}` is
+  substituted only in plugin skills, so it cannot be used here.
 
 ### Skills
 Skills (`skills/spring-installer/SKILL.md`) describe behavior and reference scripts. Auto-invoked by Claude Code when the conversation matches the skill description.
@@ -71,12 +79,10 @@ Skills (`skills/spring-installer/SKILL.md`) describe behavior and reference scri
 
 ## Logging
 
-### `consola`
-- **What**: structured CLI logger (https://github.com/unjs/consola).
-- **Why**: project-wide consistent log levels, `--verbose` / `--silent` toggling, prompt helpers, child loggers per module — all out of the box. Replaces the `log()` helper originally proposed in `ARCHITECTURE.md`. Tiny footprint, no native deps, ESM-first.
-- **Where**: orchestration scripts (`scripts/*.ts`); the I/O-free library layer (`scripts/lib/*`) must remain logger-free.
-- **Usage**: import the project-level instance from a single helper (e.g. `scripts/logger.ts` once introduced — outside the I/O-free `scripts/lib/` boundary), so log level / format are applied consistently. Tests should not import consola directly.
-- **Note**: this entry supersedes the "no logger library" line in `ARCHITECTURE.md`; that file will be revised in the `arch-md-v2` track.
+Scripts print JSON on stdout and nothing else — there is no logger library.
+`consola` was adopted during the scaffold track and removed once the skill
+bundles had to stay dependency-free (TD-001); a logger would be inlined into
+every bundle for output the skill's callers parse as JSON anyway.
 
 ## Distribution
 
@@ -125,7 +131,7 @@ bun run scripts/fetch.ts framework 6.2.1 --output /tmp/spring-framework-6.2.1
 
 ## Out of Stack
 
-- **No bundler** — `bun` runs `.ts` directly.
+- **No bundler for the plugin channel** — `bun` runs `.ts` directly. `Bun.build` is used for one thing only: the committed skill bundles the standalone channel needs (see § Two install channels).
 - **No frontend framework** — there is no UI; all output is terminal/files.
 - **No database** — caches use the filesystem under `~/.cache/pleaseai-spring/`.
 - **No long-running server** — every command is a one-shot invocation.

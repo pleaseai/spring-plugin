@@ -3,10 +3,14 @@
 > Agent-first architecture document for `@pleaseai/spring` — Claude Code plugin
 > for Spring ecosystem documentation.
 
-> **Status**: Target architecture. The repository currently contains only
-> `README.md`, `LICENSE`, and project metadata; the modules described below
-> are the planned implementation. As code lands, this document is updated
-> to reflect actual structure (not aspirational design).
+> **Status**: Target architecture, **partly superseded**. Detection
+> (`scripts/detect.ts`), documentation resolution (`scripts/docs.ts`) and the
+> `spring-docs` skill are implemented. They do not install documentation into
+> `.claude/skills/spring-*/` and do not annotate the project's `CLAUDE.md`:
+> an archive is unpacked once into `~/.cache/pleaseai-spring/docs/<tag>/` and
+> callers are handed the path (see README, "Why not install the docs into the
+> project"). The install/resolve/convert pipeline described below is still the
+> unrevised earlier design; it is rewritten when the remaining stages land.
 
 ## System Overview
 
@@ -38,11 +42,11 @@ Dependencies flow downward only. Lower layers must not import upper layers.
 
 ```
 ┌──────────────────────────────────────────────────┐
-│              Interface Layer                     │  Slash commands (commands/*.md)
-│              ─────────────────                   │  Plugin manifest (.claude-plugin/plugin.json)
+│              Interface Layer                     │  Plugin manifest (.claude-plugin/plugin.json)
+│              ─────────────────                   │
 ├──────────────────────────────────────────────────┤
 │              Skill Layer                         │  skills/spring-installer/SKILL.md
-│              ───────────                         │  (Bridges commands → scripts; Claude-invoked)
+│              ───────────                         │  (Bridges Claude → scripts; Claude-invoked)
 ├──────────────────────────────────────────────────┤
 │              Orchestration Layer                 │  scripts/install.ts (top-level pipeline)
 │              ───────────────────                 │
@@ -62,13 +66,11 @@ Dependencies flow downward only. Lower layers must not import upper layers.
 
 - **Library layer has no I/O**: pure functions for parsing and conversion. All reads/writes happen one layer up. This keeps `scripts/lib/*` trivially unit-testable with fixture inputs.
 - **Domain layer functions are independently runnable**: `bun run scripts/fetch.ts framework 6.2.1 --output /tmp/...` works without first running detect or resolve. Each stage is a usable CLI on its own.
-- **Slash commands hold no logic**: `commands/install.md` just delegates; behavior lives in the skill and scripts.
 
 ## Entry Points
 
 For understanding **the install pipeline** (most common starting point):
 
-- `commands/install.md` — Slash command entry. Maps `/spring:install` to the installer skill.
 - `skills/spring-installer/SKILL.md` — Skill description that Claude Code auto-invokes; orchestrates calls to scripts.
 - `scripts/install.ts` — Top-level pipeline: detect → resolve → acquire → install → annotate `CLAUDE.md`.
 
@@ -92,8 +94,7 @@ For understanding **what gets written to the user's project**:
 | Module                      | Purpose                                                | Key Files                                       | Depends On                              | Depended By                  |
 | --------------------------- | ------------------------------------------------------ | ----------------------------------------------- | --------------------------------------- | ---------------------------- |
 | `.claude-plugin/`           | Plugin manifest (Claude Code convention).              | `plugin.json`                                   | —                                       | Claude Code runtime          |
-| `commands/`                 | Slash command entry points (thin Markdown).            | `install.md`, `list.md`, `update.md`, `remove.md`, `add.md` | `skills/spring-installer/`              | Claude Code runtime          |
-| `skills/spring-installer/`  | Skill that orchestrates scripts; Claude-invoked.       | `SKILL.md`                                      | `scripts/install.ts`                    | `commands/`                  |
+| `skills/spring-installer/`  | Skill that orchestrates scripts; Claude-invoked.       | `SKILL.md`                                      | `scripts/install.ts`                    | Claude Code runtime          |
 | `scripts/` (orchestration)  | Pipeline driver; one `.ts` per stage.                  | `install.ts`, `detect.ts`, `resolve.ts`, `fetch.ts` | `scripts/lib/`, network, filesystem | `skills/spring-installer/`   |
 | `scripts/lib/`              | Pure helpers (parsing, conversion rules, schemas).     | `antora-rules.ts`, `manifest.ts`                | —                                       | `scripts/*.ts`               |
 | `prebuilt/`                 | Catalog mapping `{component, version}` → release URL.  | `catalog.json`                                  | —                                       | `scripts/fetch.ts`           |
@@ -110,10 +111,13 @@ For understanding **what gets written to the user's project**:
 These constraints must hold across all changes. Violations are blocking review issues.
 
 **Plugin layout follows Claude Code conventions strictly.**
-The manifest lives at `.claude-plugin/plugin.json` and is the **only** file in that directory. All other components (`skills/`, `commands/`, `scripts/`) sit at the plugin root. Path references inside skills/scripts use `${CLAUDE_PLUGIN_ROOT}`. *Why*: Claude Code's plugin loader assumes this layout — deviating breaks discovery.
+The manifest lives at `.claude-plugin/plugin.json` and is the **only** file in that directory. All other components (`skills/`, `scripts/`) sit at the plugin root. *Why*: Claude Code's plugin loader assumes this layout — deviating breaks discovery.
 
-**Commands hold no logic.**
-A `commands/*.md` file is a thin entry point that names a skill or invokes a script. Behavior lives in the skill or in `scripts/`. *Why*: keeps commands inspectable and lets the same logic be reached from scripts/tests without going through the slash-command path.
+**The skill directory is self-contained.**
+`skills/spring-docs/` carries everything it executes: `SKILL.md` plus the dependency-free bundles under its own `scripts/`. Skill content addresses them through `${CLAUDE_SKILL_DIR}`, never `${CLAUDE_PLUGIN_ROOT}`. *Why*: the skill ships through two channels. As a plugin it gets a plugin root and an automatic dependency install; installed standalone with `npx skills` it gets neither, because only the skill directory is copied. `${CLAUDE_SKILL_DIR}` resolves in both, `${CLAUDE_PLUGIN_ROOT}` is substituted only in plugin skills, and a bare relative path resolves against the user's project — where these scripts do not exist.
+
+**Bundles are generated, never edited.**
+`skills/spring-docs/scripts/*.mjs` is output from `bun run build:skill`; the TypeScript sources under `scripts/` are the only editable form. CI fails on a stale bundle (`bun run build:skill:check`). *Why*: `npx skills` copies straight from the repository, so no build step runs between the source and the installed skill — the artifact has to be committed, and a committed artifact drifts unless something checks it.
 
 **Library layer is I/O-free.**
 Modules under `scripts/lib/` (e.g., `antora-rules.ts`, `manifest.ts`) accept inputs and return outputs — no `fetch`, no `fs`, no `process.env`. *Why*: lets the bulk of the conversion logic be tested with fixture inputs and run safely in any environment.
