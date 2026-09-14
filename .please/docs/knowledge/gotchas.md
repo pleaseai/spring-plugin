@@ -18,6 +18,20 @@
 
 - **lint-staged + `--max-warnings 0` + ignored files**: when a staged path falls under eslint's ignore-list, eslint emits a "File ignored because of a matching ignore pattern" *warning* that trips `--max-warnings 0` and fails the pre-commit hook. Add `--no-warn-ignored` to the lint-staged eslint command to suppress.
 
+## Static analysis (SonarQube Cloud, Codacy)
+
+Neither service is invoked by a workflow — both analyse every push through their GitHub App. That changes where their configuration lives and when it takes effect.
+
+- **SonarQube Cloud is in Automatic Analysis mode, which reads `.sonarcloud.properties` and ignores `sonar-project.properties`.** The docs are explicit that the two files are different and that a `sonar-project.properties` in an imported project is ignored. Three further constraints: only the copy on the **default branch** applies (a change does not affect the PR that makes it), **wildcards are not allowed** in the values, and where the file and the SonarQube Cloud UI disagree the **file wins** — so an entry that matches nothing cannot be corrected from the UI while it is still there.
+
+- **Codacy reads `.codacy.yml` (or `.codacy.yaml`), and the first line must be `---`.** Additions are honoured on the PR that makes them; only removals wait for the default branch. Once the file exists, the UI's "Ignored files" settings stop applying. Validate before pushing: `docker run --rm -v "$(pwd)":/src codacy/codacy-analysis-cli validate-configuration --directory /src`.
+
+- **Codacy's ESLint runs its own rule set, not this repo's, unless the Code patterns UI toggle says otherwise.** That is why `bun run lint` is clean while Codacy reports dozens of `Found <fn> from package "node:fs" with non literal argument` — the rule is `detect-non-literal-fs-filename` from `eslint-plugin-security`, which is not in this repo's dependency tree at all. On a module whose job is building and reading cache paths it fires on nearly every line. Codacy detects `eslint.config.js` for ESLint v9, but using it requires activating the per-tool "Configuration file" toggle on the repository's Code patterns page — a UI action, not a repo change.
+
+- **The committed skill bundles must be excluded from both.** `skills/*/scripts/*.mjs` is generated from `scripts/*.ts` and committed for the `npx skills` channel, so analysing it scores the same program twice: full-file duplication against its source, plus the `var` declarations Bun emits, which cannot be edited away because `build:skill:check` byte-compares the bundle. `eslint.config.js` already ignored it; `.sonarcloud.properties` and `.codacy.yml` now do too.
+
+- **Neither check blocks a merge.** The `main` ruleset carries no `required_status_checks` rule — only `deletion`, `non_fast_forward`, and a `pull_request` rule with `required_approving_review_count: 0`, `allowed_merge_methods: ["squash"]`, and `required_review_thread_resolution: true`. A PR showing `mergeStateStatus: BLOCKED` on green CI is almost always an **unresolved review thread**, not a failing analyser. Auto-merge cannot be armed at all: the repository has `allow_auto_merge: false`.
+
 ## Repo / process
 
 - **Husky 9 pre-commit hook**: just `bunx lint-staged` on a single line. No shebang, no `set -e` — the `_/h` wrapper handles shell setup. Adding the legacy boilerplate is harmless but stale.
