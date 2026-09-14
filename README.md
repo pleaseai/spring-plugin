@@ -126,7 +126,8 @@ A version that has not been published comes back as `kind: "unavailable"` with t
 1. **Catalog lookup** — `catalog.json` on [`pleaseai/spring-docs`](https://github.com/pleaseai/spring-docs) maps `(project, version)` to a release tag. It is a few kilobytes and is fetched every time, because it is the only thing that reports a rebuild having moved a version to a new tag.
 2. **Cache check** — if the tag's directory is already unpacked, that path is returned and nothing else is downloaded.
 3. **Download and verify** — the `.tar.gz` (0.4-0.5 MB) and its `.sha256` sidecar. A digest mismatch writes nothing and fails loudly.
-4. **Unpack** — into a staging directory beside the target, then renamed into place, so an interrupted run never leaves a half-written tree under the name callers read.
+4. **Unpack** — into a staging directory beside the target, so an interrupted run never leaves a half-written tree under the name callers read.
+5. **Publish** — the verified tree is moved to a sibling directory of its own, named after the archive's digest, and `<tag>` becomes a link onto it. Replacing a link is a single atomic rename, so a reader arriving mid-publication sees the old tree or the new one, never a missing path. `path` and `index` keep naming `<tag>` itself — the link, not its target — so a caller's stored path stays valid across a refresh. A superseded tree is left in place for readers still inside it and reclaimed an hour after it stopped being served. On Windows the link is a junction, which needs no elevation but cannot be renamed over — the old entry moves aside first, so publication there is two metadata operations rather than one. Where no link can be created at all, the tree is moved into place directly and the publication window reopens.
 
 Each unpacked tree carries the `manifest.json` from its release: upstream repository, ref, commit, converter versions, file count, and a checksum over the content.
 

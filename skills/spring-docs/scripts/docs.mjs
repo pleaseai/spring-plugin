@@ -7,7 +7,7 @@
 import { Buffer } from "buffer";
 import { spawnSync } from "child_process";
 import { createHash, randomUUID } from "crypto";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "fs";
+import { existsSync, lstatSync, lutimesSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, readlinkSync, renameSync, rmSync, statSync, symlinkSync, writeFileSync } from "fs";
 import { homedir } from "os";
 import { basename, dirname, join as join2 } from "path";
 import process from "process";
@@ -134,23 +134,91 @@ function isUsableTree(path) {
     return false;
   }
 }
-function publish(extracted, target) {
-  const displaced = existsSync(target) ? `${target}.replaced-${randomUUID()}` : undefined;
-  if (displaced !== undefined)
-    renameSync(target, displaced);
+function contentName(target, digest) {
+  return `${basename(target)}.content-${digest.slice(0, 12)}-${randomUUID()}`;
+}
+function isDirectoryEntry(path) {
   try {
-    renameSync(extracted, target);
-  } catch (err) {
-    if (displaced !== undefined) {
-      if (existsSync(target))
-        discard(displaced);
-      else
-        renameSync(displaced, target);
+    return lstatSync(path).isDirectory();
+  } catch {
+    return false;
+  }
+}
+function entryExists(path) {
+  try {
+    lstatSync(path);
+    return true;
+  } catch {
+    return false;
+  }
+}
+function liveContent(target) {
+  try {
+    return basename(readlinkSync(target));
+  } catch {
+    return;
+  }
+}
+var LINK_ATTEMPTS = 5;
+function publish(extracted, target, digest) {
+  const name = contentName(target, digest);
+  const content = join2(dirname(target), name);
+  const superseded = liveContent(target);
+  renameSync(extracted, content);
+  if (superseded !== undefined && superseded !== name)
+    retire(join2(dirname(target), superseded));
+  let outcome = "contended";
+  for (let attempt = 0;attempt < LINK_ATTEMPTS && outcome === "contended"; attempt++)
+    outcome = linkOnto(target, name);
+  if (outcome !== "linked")
+    swapOnto(content, target);
+}
+function retire(path) {
+  const now = new Date;
+  try {
+    lutimesSync(path, now, now);
+  } catch {}
+}
+function linkOnto(target, name) {
+  const junction = process.platform === "win32";
+  const staged = `${target}.link-${randomUUID()}`;
+  try {
+    symlinkSync(junction ? join2(dirname(target), name) : name, staged, junction ? "junction" : "dir");
+  } catch {
+    return "unsupported";
+  }
+  let displaced;
+  try {
+    if (junction ? entryExists(target) : isDirectoryEntry(target)) {
+      displaced = `${target}.replaced-${randomUUID()}`;
+      renameSync(target, displaced);
+      retire(displaced);
     }
+    renameSync(staged, target);
+  } catch {
+    if (displaced !== undefined && !entryExists(target)) {
+      try {
+        renameSync(displaced, target);
+      } catch {}
+    }
+    discard(staged);
+    return "contended";
+  }
+  return "linked";
+}
+function swapOnto(content, target) {
+  const displaced = entryExists(target) ? `${target}.replaced-${randomUUID()}` : undefined;
+  if (displaced !== undefined) {
+    renameSync(target, displaced);
+    retire(displaced);
+  }
+  try {
+    renameSync(content, target);
+  } catch (err) {
+    if (displaced !== undefined && !entryExists(target))
+      renameSync(displaced, target);
     throw err;
   }
-  if (displaced !== undefined)
-    discard(displaced);
 }
 function discard(path) {
   try {
@@ -158,9 +226,11 @@ function discard(path) {
   } catch {}
 }
 var LEFTOVER_TTL_MS = 60 * 60 * 1000;
+var LEFTOVER_MARKERS = [".staging-", ".replaced-", ".link-", ".content-"];
 function sweepLeftovers(target) {
   const parent = dirname(target);
   const prefix = basename(target);
+  const live = liveContent(target);
   const cutoff = Date.now() - LEFTOVER_TTL_MS;
   let entries;
   try {
@@ -169,16 +239,18 @@ function sweepLeftovers(target) {
     return;
   }
   for (const name of entries) {
-    if (!name.startsWith(`${prefix}.staging-`) && !name.startsWith(`${prefix}.replaced-`))
+    if (!LEFTOVER_MARKERS.some((marker) => name.startsWith(`${prefix}${marker}`)))
+      continue;
+    if (name === live)
       continue;
     const path = join2(parent, name);
     try {
-      if (statSync(path).mtimeMs < cutoff)
+      if (lstatSync(path).mtimeMs < cutoff)
         rmSync(path, { recursive: true, force: true });
     } catch {}
   }
 }
-function unpack(archive, project, version, target) {
+function unpack(archive, project, version, target, digest) {
   mkdirSync(dirname(target), { recursive: true });
   const staging = mkdtempSync(`${target}.staging-`);
   try {
@@ -194,7 +266,7 @@ function unpack(archive, project, version, target) {
       throw new Error(`archive does not contain ${project}-${version}/`);
     if (!isUsableTree(extracted))
       throw new Error(`archive does not contain ${project}-${version}/${INDEX_FILE}`);
-    publish(extracted, target);
+    publish(extracted, target, digest);
   } finally {
     rmSync(staging, { recursive: true, force: true });
   }
@@ -268,7 +340,7 @@ async function resolveDocs(options) {
     return unavailable(project, version, `checksum mismatch for ${tag}: expected ${expected.slice(0, 12)}\u2026, got ${actual.slice(0, 12)}\u2026`, "nothing was written to the cache; retry, and report it if it persists");
   }
   try {
-    unpack(archive, project, version, target);
+    unpack(archive, project, version, target, actual);
   } catch (err) {
     return unavailable(project, version, `unpacking ${tag} failed: ${err instanceof Error ? err.message : String(err)}`);
   }

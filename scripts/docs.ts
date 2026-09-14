@@ -25,7 +25,7 @@ import type { Catalog } from './lib/docs-cache.ts'
 import { Buffer } from 'node:buffer'
 import { spawnSync } from 'node:child_process'
 import { createHash, randomUUID } from 'node:crypto'
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { existsSync, lstatSync, lutimesSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, readlinkSync, renameSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { basename, dirname, join } from 'node:path'
 import process from 'node:process'
@@ -170,37 +170,253 @@ function isUsableTree(path: string): boolean {
 }
 
 /**
- * Move `extracted` into `target`, replacing whatever is there.
+ * Name for the sibling directory holding one publication's unpacked bytes.
  *
- * Swaps rather than clearing first. `renameSync` refuses a non-empty target
- * directory outright, so the old remove-then-rename lost a concurrent race with
- * ENOTEMPTY after a good download; and clearing first left the shared path
- * missing for as long as the delete took. Two renames still leave a window, but
- * a metadata-only one rather than a whole-tree delete.
+ * The digest is provenance — it says which archive the tree came from — and the
+ * random suffix is what makes the name this publication's alone. A name derived
+ * from the digest only would be shared by every publisher of those bytes, and
+ * two of them racing would each see it unusable, so the slower one would delete
+ * the tree the faster one had already published and linked.
  */
-function publish(extracted: string, target: string): void {
-  const displaced = existsSync(target) ? `${target}.replaced-${randomUUID()}` : undefined
-  if (displaced !== undefined)
-    renameSync(target, displaced)
+function contentName(target: string, digest: string): string {
+  return `${basename(target)}.content-${digest.slice(0, 12)}-${randomUUID()}`
+}
+
+/** True when `path` is itself a directory — not a symlink that resolves to one. */
+function isDirectoryEntry(path: string): boolean {
   try {
-    renameSync(extracted, target)
+    return lstatSync(path).isDirectory()
+  }
+  catch {
+    return false
+  }
+}
+
+/**
+ * True when anything at all occupies `path`.
+ *
+ * `lstat`, not `existsSync`: a link whose target is gone is still an entry
+ * `rename` has to contend with, and `existsSync` follows the link and answers
+ * that nothing is there.
+ */
+function entryExists(path: string): boolean {
+  try {
+    lstatSync(path)
+    return true
+  }
+  catch {
+    return false
+  }
+}
+
+/**
+ * Name of the content directory `target` currently points at.
+ *
+ * Reduced to a basename because {@link linkOnto} writes the link relative on
+ * POSIX and absolute on Windows, and the caller compares it against directory
+ * entries either way.
+ *
+ * @returns undefined when `target` is missing, or is a directory rather than a
+ * link — both mean no content directory is live.
+ */
+function liveContent(target: string): string | undefined {
+  try {
+    return basename(readlinkSync(target))
+  }
+  catch {
+    return undefined
+  }
+}
+
+/**
+ * How a publication's attempt to put its link in place ended.
+ *
+ * `contended` and `unsupported` both mean "no link yet" but call for opposite
+ * responses: losing a race is worth another attempt, and a platform that cannot
+ * create the link at all fails identically however many times it is asked.
+ */
+type LinkOutcome = 'linked' | 'contended' | 'unsupported'
+
+/**
+ * How many times a publication re-attempts a *contended* link.
+ *
+ * Bounded rather than "until it succeeds": a rename can also fail for reasons no
+ * number of attempts fixes — a permission change, a filesystem going read-only —
+ * and an unbounded loop turns those into a hang instead of a fallback. Several
+ * attempts is already far more contention than a documentation cache sees, and
+ * the fallback below still publishes correctly when they run out.
+ */
+const LINK_ATTEMPTS = 5
+
+/**
+ * Publish `extracted` at `target` without `target` ever being missing.
+ *
+ * The bytes land in a sibling directory of their own and `target` becomes a
+ * link to it. Replacing a link is a single `rename`, which is atomic: every
+ * reader sees either the old tree or the new one, never a gap. Moving the tree
+ * itself into place could not offer that — `rename` will not replace a
+ * populated directory, so the previous tree had to be moved aside first, and
+ * between those two renames the path callers read did not exist.
+ *
+ * The tree this supersedes is left where it is, because a reader that opened it
+ * a moment before the swap is still inside it; {@link sweepLeftovers} reclaims
+ * it once nothing can be.
+ */
+function publish(extracted: string, target: string, digest: string): void {
+  const name = contentName(target, digest)
+  const content = join(dirname(target), name)
+  const superseded = liveContent(target)
+  renameSync(extracted, content)
+
+  // Before the swap, not after: between the two, a concurrent sweep still reads
+  // the tree's extraction time, and an aged one is exactly what it deletes —
+  // out from under the readers this grace period exists for. Stamping it early
+  // costs nothing if the publication then fails, because the sweep never
+  // reclaims whatever the link currently points at.
+  if (superseded !== undefined && superseded !== name)
+    retire(join(dirname(target), superseded))
+
+  // Re-attempted only while the link is losing a race. On Windows every
+  // publication moves the old entry aside, so concurrent refreshes overlap on a
+  // window rather than on an instant, and a loser that gave up would replace the
+  // winner's junction with a plain directory. A platform that cannot create the
+  // link at all reports that instead, and is not asked again.
+  let outcome: LinkOutcome = 'contended'
+  for (let attempt = 0; attempt < LINK_ATTEMPTS && outcome === 'contended'; attempt++)
+    outcome = linkOnto(target, name)
+
+  // Fall back to moving the tree itself, which reopens the window this function
+  // exists to close — correctness over atomicity.
+  if (outcome !== 'linked')
+    swapOnto(content, target)
+}
+
+/**
+ * Mark a superseded tree as retired, as of now.
+ *
+ * The sweep ages a leftover by its mtime, and a published tree's mtime is when
+ * it was extracted. Without this, a tree that had been serving for longer than
+ * the TTL would be reclaimed by the very next run — so a reader that entered it
+ * just before the swap would get none of the grace period the swap exists to
+ * give them.
+ */
+function retire(path: string): void {
+  const now = new Date()
+  try {
+    // `lutimes`, to stamp the entry rather than whatever it points at — the
+    // same side of the link the sweep reads it back from. `swapOnto` can hand
+    // this a link rather than a tree, and following it would age the tree the
+    // old link pointed at while leaving the entry the sweep actually sees
+    // untouched.
+    lutimesSync(path, now, now)
+  }
+  catch {
+    // Only costs the superseded tree its grace period; never the publication.
+  }
+}
+
+/**
+ * Replace `target` with a link to the sibling named `name`.
+ *
+ * Windows gets a junction, which needs neither Developer Mode nor elevation —
+ * the directory symlink it would otherwise use needs one of the two, and the
+ * cache would be unpublishable on an ordinary account. A junction resolves only
+ * against an absolute path, so the link is written absolute there and relative
+ * everywhere else, where a relative link keeps the cache tree movable.
+ *
+ * @returns how the attempt ended. Never throws and never ends with `target`
+ * emptier than it found it: a failure here still has to leave a usable cache
+ * behind.
+ */
+function linkOnto(target: string, name: string): LinkOutcome {
+  const junction = process.platform === 'win32'
+  const staged = `${target}.link-${randomUUID()}`
+  try {
+    symlinkSync(junction ? join(dirname(target), name) : name, staged, junction ? 'junction' : 'dir')
+  }
+  catch {
+    // No link of either kind can be created here; asking again cannot change
+    // that, and the caller's fallback is the only way to publish at all.
+    return 'unsupported'
+  }
+
+  // One rename is the whole point, and two cases cannot have it. A populated
+  // directory at `target` — the layout this cache had before the indirection,
+  // and what the fallback writes — is something `rename` refuses to replace
+  // anywhere. And on Windows `rename` cannot replace *any* directory, which a
+  // junction is, so every publication there moves the old entry aside first and
+  // publishes through a window two metadata operations wide.
+  let displaced: string | undefined
+  try {
+    if (junction ? entryExists(target) : isDirectoryEntry(target)) {
+      displaced = `${target}.replaced-${randomUUID()}`
+      renameSync(target, displaced)
+      // Retired the moment it is moved aside, not once the link lands: until it
+      // is stamped it still carries the mtime it was published with, which on a
+      // tree that had been serving for days is already past the cutoff — and a
+      // concurrent sweep would take it out from under its readers right here.
+      retire(displaced)
+    }
+    renameSync(staged, target)
+  }
+  catch {
+    // Put the previous tree back — unless a concurrent publisher already
+    // refilled the path, in which case its tree is the one callers read.
+    if (displaced !== undefined && !entryExists(target)) {
+      try {
+        renameSync(displaced, target)
+      }
+      catch {
+        // Left for the caller's fallback, which publishes into the gap.
+      }
+    }
+    discard(staged)
+    // Someone else holds the path, or the filesystem refused the move. Either
+    // way another attempt is worth making before falling back.
+    return 'contended'
+  }
+
+  // `displaced` is left where it is — a whole documentation tree with readers
+  // possibly still inside it, already retired above, and reclaimed by the sweep
+  // once its grace period is up.
+  return 'linked'
+}
+
+/**
+ * Move `content` onto `target` itself, for platforms with no usable symlink.
+ *
+ * Swaps rather than clearing first: `renameSync` refuses a non-empty target
+ * directory outright, so remove-then-rename lost a concurrent race with
+ * ENOTEMPTY after a good download, and clearing first left the shared path
+ * missing for as long as the delete took.
+ */
+function swapOnto(content: string, target: string): void {
+  // `entryExists`, not `existsSync`: after a link publication `target` can be a
+  // link whose tree is already gone, and `existsSync` follows it and answers
+  // that the path is free — then `rename` fails on the entry that is still
+  // there.
+  const displaced = entryExists(target) ? `${target}.replaced-${randomUUID()}` : undefined
+  if (displaced !== undefined) {
+    renameSync(target, displaced)
+    // Stamped here rather than after the swap, for the same reason as in
+    // `linkOnto`: until it is, an old tree is already past the sweep's cutoff.
+    retire(displaced)
+  }
+  try {
+    renameSync(content, target)
   }
   catch (err) {
     // Never end emptier than we started: put the previous tree back. Unless a
     // concurrent publisher already refilled the path — then its tree is the one
     // callers read, and ours is debris rather than a restore candidate.
-    if (displaced !== undefined) {
-      if (existsSync(target))
-        discard(displaced)
-      else
-        renameSync(displaced, target)
-    }
+    // Already retired above, so leaving it is enough when the path is taken.
+    if (displaced !== undefined && !entryExists(target))
+      renameSync(displaced, target)
     throw err
   }
-  // The new tree is published and readable from here on, so failing to delete
-  // the one it replaced is leftover debris, not a failed download.
-  if (displaced !== undefined)
-    discard(displaced)
+  // `displaced` stays where it is: retired rather than deleted, like every other
+  // superseded tree, so a reader that entered it before the swap keeps it for
+  // its grace period.
 }
 
 /** Delete a directory nothing reads from any more, without failing the caller. */
@@ -213,8 +429,11 @@ function discard(path: string): void {
   }
 }
 
-/** How long a staging or displaced directory may sit before it counts as debris. */
+/** How long a leftover directory may sit before it counts as debris. */
 const LEFTOVER_TTL_MS = 60 * 60 * 1000
+
+/** Name fragments marking a directory beside `target` as this module's own leftover. */
+const LEFTOVER_MARKERS = ['.staging-', '.replaced-', '.link-', '.content-'] as const
 
 /**
  * Delete the staging and displaced directories a killed run left behind.
@@ -229,6 +448,7 @@ const LEFTOVER_TTL_MS = 60 * 60 * 1000
 function sweepLeftovers(target: string): void {
   const parent = dirname(target)
   const prefix = basename(target)
+  const live = liveContent(target)
   const cutoff = Date.now() - LEFTOVER_TTL_MS
   let entries: string[]
   try {
@@ -242,11 +462,21 @@ function sweepLeftovers(target: string): void {
     return
   }
   for (const name of entries) {
-    if (!name.startsWith(`${prefix}.staging-`) && !name.startsWith(`${prefix}.replaced-`))
+    if (!LEFTOVER_MARKERS.some(marker => name.startsWith(`${prefix}${marker}`)))
+      continue
+    // The tree `target` currently points at is not debris, however old it is:
+    // a cache that is never refreshed would otherwise delete itself an hour
+    // after it was filled.
+    if (name === live)
       continue
     const path = join(parent, name)
     try {
-      if (statSync(path).mtimeMs < cutoff)
+      // `lstat`, not `stat`: a staged link resolves to a content directory that
+      // is usually older than the link itself, so following it would age a link
+      // created moments ago by the tree it points at and delete it out from
+      // under the publication in flight. A link whose target is already gone
+      // would not be aged at all — `stat` throws, and the leftover leaks.
+      if (lstatSync(path).mtimeMs < cutoff)
         rmSync(path, { recursive: true, force: true })
     }
     catch {
@@ -255,8 +485,11 @@ function sweepLeftovers(target: string): void {
   }
 }
 
-/** Unpack `archive` and move the single top-level directory it holds to `target`. */
-function unpack(archive: Buffer, project: string, version: string, target: string): void {
+/**
+ * Unpack `archive` and publish the single top-level directory it holds at
+ * `target`, keyed by `digest` — the verified checksum of these exact bytes.
+ */
+function unpack(archive: Buffer, project: string, version: string, target: string, digest: string): void {
   mkdirSync(dirname(target), { recursive: true })
   // Staged next to the target so the rename below stays on one filesystem, and
   // so a crash mid-extraction never leaves a half-written tree under the name
@@ -282,7 +515,7 @@ function unpack(archive: Buffer, project: string, version: string, target: strin
     if (!isUsableTree(extracted))
       throw new Error(`archive does not contain ${project}-${version}/${INDEX_FILE}`)
 
-    publish(extracted, target)
+    publish(extracted, target, digest)
   }
   finally {
     rmSync(staging, { recursive: true, force: true })
@@ -432,7 +665,7 @@ export async function resolveDocs(options: ResolveOptions): Promise<ResolveResul
   }
 
   try {
-    unpack(archive, project, version, target)
+    unpack(archive, project, version, target, actual)
   }
   catch (err) {
     return unavailable(project, version, `unpacking ${tag} failed: ${err instanceof Error ? err.message : String(err)}`)
