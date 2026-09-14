@@ -57,8 +57,8 @@ dependency-free `.mjs` bundles inside it.
 
 | | Plugin | `npx skills` |
 |---|---|---|
-| Agents | Claude Code only | every agent the `skills` CLI supports |
-| Updates | `/plugin update spring@pleaseai` | re-run `npx skills add` |
+| Agents | Claude Code only | Every agent the `skills` CLI supports |
+| Updates | `/plugin update spring@pleaseai` | Re-run `npx skills add` |
 
 Both install the same `spring-docs` skill, and it behaves identically in either:
 the skill addresses its scripts through `${CLAUDE_SKILL_DIR}` and runs the
