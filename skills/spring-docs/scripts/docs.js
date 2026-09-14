@@ -54,7 +54,9 @@ function isVersionMap(value) {
   return Object.values(value).every((entry) => {
     if (!isObjectMap(entry))
       return false;
-    return typeof entry.tag === "string";
+    if (typeof entry.tag !== "string")
+      return false;
+    return entry.released_at === null || typeof entry.released_at === "string";
   });
 }
 function isObjectMap(value) {
@@ -124,7 +126,11 @@ async function fetchText(fetchImpl, url) {
   }
 }
 function isUsableTree(path) {
-  return existsSync(join2(path, INDEX_FILE));
+  try {
+    return statSync(join2(path, INDEX_FILE)).isFile();
+  } catch {
+    return false;
+  }
 }
 function publish(extracted, target) {
   const displaced = existsSync(target) ? `${target}.replaced-${randomUUID()}` : undefined;
@@ -152,6 +158,8 @@ function discard(path) {
 var LEFTOVER_TTL_MS = 60 * 60 * 1000;
 function sweepLeftovers(target) {
   const parent = dirname(target);
+  if (!existsSync(parent))
+    return;
   const prefix = basename(target);
   const cutoff = Date.now() - LEFTOVER_TTL_MS;
   for (const name of readdirSync(parent)) {
@@ -166,7 +174,6 @@ function sweepLeftovers(target) {
 }
 function unpack(archive, project, version, target) {
   mkdirSync(dirname(target), { recursive: true });
-  sweepLeftovers(target);
   const staging = mkdtempSync(`${target}.staging-`);
   try {
     const archivePath = join2(staging, archiveName(project, version));
@@ -227,6 +234,7 @@ async function resolveDocs(options) {
     return unavailable(project, version, `catalog.json maps ${project} ${version} to an unusable tag "${tag}"`, `report it at https://github.com/${DOCS_REPO}/issues`);
   }
   const target = docsCachePath(cacheHome, tag);
+  sweepLeftovers(target);
   if (isUsableTree(target) && !refresh) {
     writePointer(cacheHome, project, version, tag);
     return ready(project, version, tag, target, true);

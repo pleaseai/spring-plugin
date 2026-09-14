@@ -258,8 +258,7 @@ describe('resolveDocs', () => {
   })
 
   test('refuses an archive that carries no table of contents', async () => {
-    const archive = buildArchive(fixtures, `${PROJECT}-${VERSION}`)
-    // Rebuild the tree without `_index.md`, keeping the checksum honest.
+    // Built without `_index.md`, with the checksum kept honest against it.
     rmSync(join(fixtures, `${PROJECT}-${VERSION}`), { recursive: true, force: true })
     const tree = join(fixtures, `${PROJECT}-${VERSION}`)
     mkdirSync(tree, { recursive: true })
@@ -269,7 +268,7 @@ describe('resolveDocs', () => {
       throw new Error('tar failed')
     const bytes = Buffer.from(readFileSync(join(fixtures, 'indexless.tar.gz')))
     const digest = createHash('sha256').update(bytes).digest('hex')
-    expect(archive.length).toBeGreaterThan(0)
+    expect(bytes.length).toBeGreaterThan(0)
 
     const fetchImpl: Fetcher = async (url) => {
       if (url === CATALOG_URL)
@@ -359,5 +358,58 @@ describe('resolveDocs', () => {
 
     expect(existsSync(abandoned)).toBe(false)
     expect(existsSync(inFlight)).toBe(true)
+  })
+
+  test('reclaims debris on a cache hit, which never reaches a download', async () => {
+    const archive = buildArchive(fixtures, `${PROJECT}-${VERSION}`, '# First\n')
+    const digest = createHash('sha256').update(archive).digest('hex')
+    const fetchImpl: Fetcher = async (url) => {
+      if (url === CATALOG_URL)
+        return respond(catalogJson(TAG))
+      if (url === checksumUrl(TAG, PROJECT, VERSION))
+        return respond(`${digest}  ${archiveName(PROJECT, VERSION)}\n`)
+      return respond(archive)
+    }
+    await resolveDocs({ project: PROJECT, version: VERSION, cacheHome, fetchImpl })
+
+    // A refresh that died while the previous tree stayed usable: every later
+    // run is a cache hit, so a sweep that only ran while unpacking would never
+    // reclaim this.
+    const abandoned = `${docsCachePath(cacheHome, TAG)}.replaced-abandoned`
+    mkdirSync(abandoned, { recursive: true })
+    const longAgo = new Date(Date.now() - 2 * 60 * 60 * 1000)
+    utimesSync(abandoned, longAgo, longAgo)
+
+    const hit = await resolveDocs({ project: PROJECT, version: VERSION, cacheHome, fetchImpl })
+
+    expect(hit.kind === 'ready' && hit.cached).toBe(true)
+    expect(existsSync(abandoned)).toBe(false)
+  })
+
+  test('does not report a tree ready when its index is not a regular file', async () => {
+    const archive = buildArchive(fixtures, `${PROJECT}-${VERSION}`, '# First\n')
+    const digest = createHash('sha256').update(archive).digest('hex')
+    let archiveRequests = 0
+    const fetchImpl: Fetcher = async (url) => {
+      if (url === CATALOG_URL)
+        return respond(catalogJson(TAG))
+      if (url === checksumUrl(TAG, PROJECT, VERSION))
+        return respond(`${digest}  ${archiveName(PROJECT, VERSION)}\n`)
+      archiveRequests += 1
+      return respond(archive)
+    }
+    await resolveDocs({ project: PROJECT, version: VERSION, cacheHome, fetchImpl })
+
+    // A directory by that name exists just as much as a file does, and a tree
+    // published on that answer is served as ready while nothing can read it.
+    const index = join(docsCachePath(cacheHome, TAG), '_index.md')
+    rmSync(index)
+    mkdirSync(index)
+
+    const repaired = await resolveDocs({ project: PROJECT, version: VERSION, cacheHome, fetchImpl })
+
+    expect(archiveRequests).toBe(2)
+    expect(repaired.kind === 'ready' && repaired.cached).toBe(false)
+    expect(readFileSync(index, 'utf8')).toBe('# First\n')
   })
 })

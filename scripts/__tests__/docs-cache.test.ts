@@ -127,4 +127,14 @@ describe('isCatalog', () => {
     expect(isCatalog({ version: '1', projects: [] })).toBe(false)
     expect(isCatalog({ version: '1', projects: { boot: [] } })).toBe(false)
   })
+
+  test('rejects an entry whose released_at is neither a string nor null', () => {
+    const entry = (released_at: unknown): unknown =>
+      ({ version: '1', projects: { boot: { '3.5.16': { tag: 'boot-3.5.16', released_at } } } })
+    expect(isCatalog(entry(null))).toBe(true)
+    expect(isCatalog(entry('2026-09-12T00:00:00Z'))).toBe(true)
+    // Absent, not null: `lookupTag` would hand callers `undefined` behind a
+    // `string | null` type.
+    expect(isCatalog({ version: '1', projects: { boot: { '3.5.16': { tag: 'boot-3.5.16' } } } })).toBe(false)
+  })
 })

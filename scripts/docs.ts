@@ -158,7 +158,15 @@ async function fetchText(fetchImpl: Fetcher, url: string): Promise<string | { er
 
 /** True when `path` holds a documentation tree a caller can actually read from. */
 function isUsableTree(path: string): boolean {
-  return existsSync(join(path, INDEX_FILE))
+  try {
+    // A regular file, not merely an entry: `existsSync` is equally true of a
+    // directory named `_index.md`, and a tree published on that answer is
+    // served as ready forever while no caller can read the index out of it.
+    return statSync(join(path, INDEX_FILE)).isFile()
+  }
+  catch {
+    return false
+  }
 }
 
 /**
@@ -220,6 +228,10 @@ const LEFTOVER_TTL_MS = 60 * 60 * 1000
  */
 function sweepLeftovers(target: string): void {
   const parent = dirname(target)
+  // The cache directory does not exist yet on a first run, and this is now
+  // reached before anything creates it.
+  if (!existsSync(parent))
+    return
   const prefix = basename(target)
   const cutoff = Date.now() - LEFTOVER_TTL_MS
   for (const name of readdirSync(parent)) {
@@ -239,7 +251,6 @@ function sweepLeftovers(target: string): void {
 /** Unpack `archive` and move the single top-level directory it holds to `target`. */
 function unpack(archive: Buffer, project: string, version: string, target: string): void {
   mkdirSync(dirname(target), { recursive: true })
-  sweepLeftovers(target)
   // Staged next to the target so the rename below stays on one filesystem, and
   // so a crash mid-extraction never leaves a half-written tree under the name
   // callers read from.
@@ -361,6 +372,10 @@ export async function resolveDocs(options: ResolveOptions): Promise<ResolveResul
   }
 
   const target = docsCachePath(cacheHome, tag)
+  // Before the cache-hit return, not inside `unpack`: a refresh that died
+  // while the previous tree was still usable leaves debris that every later
+  // run then skips past, because those runs never reach the download.
+  sweepLeftovers(target)
   // An incomplete tree falls through to a re-download rather than failing:
   // repairing it is exactly what this function is for.
   if (isUsableTree(target) && !refresh) {

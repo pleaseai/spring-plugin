@@ -122,7 +122,12 @@ function isVersionMap(value: unknown): boolean {
   return Object.values(value).every((entry) => {
     if (!isObjectMap(entry))
       return false
-    return typeof entry.tag === 'string'
+    if (typeof entry.tag !== 'string')
+      return false
+    // `CatalogEntry` promises `string | null`, and `lookupTag` hands the value
+    // straight to callers. An absent key would satisfy neither yet pass a
+    // tag-only check, putting `undefined` behind a type that excludes it.
+    return entry.released_at === null || typeof entry.released_at === 'string'
   })
 }
 
