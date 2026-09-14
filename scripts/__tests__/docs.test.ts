@@ -1,7 +1,7 @@
 import type { Fetcher } from '../docs.ts'
 import { Buffer } from 'node:buffer'
 import { createHash } from 'node:crypto'
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs'
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, readlinkSync, rmSync, utimesSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
@@ -406,6 +406,89 @@ describe('resolveDocs', () => {
     const result = await resolveDocs({ project: PROJECT, version: VERSION, cacheHome, fetchImpl })
 
     expect(result.kind).toBe('unavailable')
+  })
+
+  test('publishes through a link, so the cache path is never a gap', async () => {
+    const archive = buildArchive(fixtures, `${PROJECT}-${VERSION}`, '# First\n')
+    const digest = createHash('sha256').update(archive).digest('hex')
+    const fetchImpl: Fetcher = async (url) => {
+      if (url === CATALOG_URL)
+        return respond(catalogJson(TAG))
+      if (url === checksumUrl(TAG, PROJECT, VERSION))
+        return respond(`${digest}  ${archiveName(PROJECT, VERSION)}\n`)
+      return respond(archive)
+    }
+
+    const result = await resolveDocs({ project: PROJECT, version: VERSION, cacheHome, fetchImpl })
+
+    // `path` stays the tag directory callers already know. What changed is
+    // that the entry is a link: replacing it is one atomic rename, so a reader
+    // arriving mid-publication sees the old tree or the new one, never neither.
+    expect(result.kind === 'ready' && result.path).toBe(docsCachePath(cacheHome, TAG))
+    const target = docsCachePath(cacheHome, TAG)
+    expect(lstatSync(target).isSymbolicLink()).toBe(true)
+    expect(readlinkSync(target)).toBe(`${TAG}.content-${digest.slice(0, 12)}`)
+    // And reading through it still resolves, which is the only thing the
+    // indirection may not cost.
+    expect(readFileSync(join(target, '_index.md'), 'utf8')).toBe('# First\n')
+  })
+
+  test('re-points the link on a refresh and reclaims the tree it superseded', async () => {
+    const first = buildArchive(fixtures, `${PROJECT}-${VERSION}`, '# First\n')
+    const second = buildArchive(fixtures, `${PROJECT}-${VERSION}`, '# Second\n')
+    let archive = first
+    const fetchImpl: Fetcher = async (url) => {
+      if (url === CATALOG_URL)
+        return respond(catalogJson(TAG))
+      if (url === checksumUrl(TAG, PROJECT, VERSION))
+        return respond(`${createHash('sha256').update(archive).digest('hex')}  ${archiveName(PROJECT, VERSION)}\n`)
+      return respond(archive)
+    }
+    await resolveDocs({ project: PROJECT, version: VERSION, cacheHome, fetchImpl })
+    const superseded = `${docsCachePath(cacheHome, TAG)}.content-${createHash('sha256').update(first).digest('hex').slice(0, 12)}`
+
+    archive = second
+    await resolveDocs({ project: PROJECT, version: VERSION, cacheHome, fetchImpl, refresh: true })
+
+    // Left in place at first: a reader that opened the old tree before the swap
+    // is still inside it, and deleting it under them is the failure the
+    // indirection exists to avoid.
+    expect(readFileSync(join(docsCachePath(cacheHome, TAG), '_index.md'), 'utf8')).toBe('# Second\n')
+    expect(existsSync(superseded)).toBe(true)
+
+    const longAgo = new Date(Date.now() - 2 * 60 * 60 * 1000)
+    utimesSync(superseded, longAgo, longAgo)
+    await resolveDocs({ project: PROJECT, version: VERSION, cacheHome, fetchImpl })
+
+    // Once no reader can plausibly still be in it, the sweep reclaims it like
+    // any other leftover — and never the tree the link currently points at.
+    expect(existsSync(superseded)).toBe(false)
+    expect(readFileSync(join(docsCachePath(cacheHome, TAG), '_index.md'), 'utf8')).toBe('# Second\n')
+  })
+
+  test('converts a cache written before the indirection into a link', async () => {
+    const archive = buildArchive(fixtures, `${PROJECT}-${VERSION}`, '# First\n')
+    const digest = createHash('sha256').update(archive).digest('hex')
+    const fetchImpl: Fetcher = async (url) => {
+      if (url === CATALOG_URL)
+        return respond(catalogJson(TAG))
+      if (url === checksumUrl(TAG, PROJECT, VERSION))
+        return respond(`${digest}  ${archiveName(PROJECT, VERSION)}\n`)
+      return respond(archive)
+    }
+    // The old layout: the tag path is the tree itself. `rename` will not put a
+    // link over a populated directory, so this publication has to move it aside
+    // rather than fail the download.
+    const target = docsCachePath(cacheHome, TAG)
+    mkdirSync(target, { recursive: true })
+    writeFileSync(join(target, 'stale.md'), 'from the old layout\n')
+
+    const result = await resolveDocs({ project: PROJECT, version: VERSION, cacheHome, fetchImpl })
+
+    expect(result.kind).toBe('ready')
+    expect(lstatSync(target).isSymbolicLink()).toBe(true)
+    expect(readFileSync(join(target, '_index.md'), 'utf8')).toBe('# First\n')
+    expect(existsSync(join(target, 'stale.md'))).toBe(false)
   })
 
   test('does not report a tree ready when its index is not a regular file', async () => {

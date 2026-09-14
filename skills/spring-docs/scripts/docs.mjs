@@ -7,7 +7,7 @@
 import { Buffer } from "buffer";
 import { spawnSync } from "child_process";
 import { createHash, randomUUID } from "crypto";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "fs";
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, readlinkSync, renameSync, rmSync, statSync, symlinkSync, writeFileSync } from "fs";
 import { homedir } from "os";
 import { basename, dirname, join as join2 } from "path";
 import process from "process";
@@ -134,12 +134,61 @@ function isUsableTree(path) {
     return false;
   }
 }
-function publish(extracted, target) {
+function contentName(target, digest) {
+  return `${basename(target)}.content-${digest.slice(0, 12)}`;
+}
+function isDirectoryEntry(path) {
+  try {
+    return lstatSync(path).isDirectory();
+  } catch {
+    return false;
+  }
+}
+function liveContent(target) {
+  try {
+    return basename(readlinkSync(target));
+  } catch {
+    return;
+  }
+}
+function publish(extracted, target, digest) {
+  const name = contentName(target, digest);
+  const content = join2(dirname(target), name);
+  if (!isUsableTree(content)) {
+    discard(content);
+    renameSync(extracted, content);
+  }
+  if (!linkOnto(target, name)) {
+    swapOnto(content, target);
+  }
+}
+function linkOnto(target, name) {
+  const junction = process.platform === "win32";
+  const staged = `${target}.link-${randomUUID()}`;
+  try {
+    symlinkSync(junction ? join2(dirname(target), name) : name, staged, junction ? "junction" : "dir");
+  } catch {
+    return false;
+  }
+  try {
+    const displaced = isDirectoryEntry(target) ? `${target}.replaced-${randomUUID()}` : undefined;
+    if (displaced !== undefined)
+      renameSync(target, displaced);
+    renameSync(staged, target);
+    if (displaced !== undefined)
+      discard(displaced);
+    return true;
+  } catch (err) {
+    discard(staged);
+    throw err;
+  }
+}
+function swapOnto(content, target) {
   const displaced = existsSync(target) ? `${target}.replaced-${randomUUID()}` : undefined;
   if (displaced !== undefined)
     renameSync(target, displaced);
   try {
-    renameSync(extracted, target);
+    renameSync(content, target);
   } catch (err) {
     if (displaced !== undefined) {
       if (existsSync(target))
@@ -158,9 +207,11 @@ function discard(path) {
   } catch {}
 }
 var LEFTOVER_TTL_MS = 60 * 60 * 1000;
+var LEFTOVER_MARKERS = [".staging-", ".replaced-", ".link-", ".content-"];
 function sweepLeftovers(target) {
   const parent = dirname(target);
   const prefix = basename(target);
+  const live = liveContent(target);
   const cutoff = Date.now() - LEFTOVER_TTL_MS;
   let entries;
   try {
@@ -169,7 +220,9 @@ function sweepLeftovers(target) {
     return;
   }
   for (const name of entries) {
-    if (!name.startsWith(`${prefix}.staging-`) && !name.startsWith(`${prefix}.replaced-`))
+    if (!LEFTOVER_MARKERS.some((marker) => name.startsWith(`${prefix}${marker}`)))
+      continue;
+    if (name === live)
       continue;
     const path = join2(parent, name);
     try {
@@ -178,7 +231,7 @@ function sweepLeftovers(target) {
     } catch {}
   }
 }
-function unpack(archive, project, version, target) {
+function unpack(archive, project, version, target, digest) {
   mkdirSync(dirname(target), { recursive: true });
   const staging = mkdtempSync(`${target}.staging-`);
   try {
@@ -194,7 +247,7 @@ function unpack(archive, project, version, target) {
       throw new Error(`archive does not contain ${project}-${version}/`);
     if (!isUsableTree(extracted))
       throw new Error(`archive does not contain ${project}-${version}/${INDEX_FILE}`);
-    publish(extracted, target);
+    publish(extracted, target, digest);
   } finally {
     rmSync(staging, { recursive: true, force: true });
   }
@@ -268,7 +321,7 @@ async function resolveDocs(options) {
     return unavailable(project, version, `checksum mismatch for ${tag}: expected ${expected.slice(0, 12)}\u2026, got ${actual.slice(0, 12)}\u2026`, "nothing was written to the cache; retry, and report it if it persists");
   }
   try {
-    unpack(archive, project, version, target);
+    unpack(archive, project, version, target, actual);
   } catch (err) {
     return unavailable(project, version, `unpacking ${tag} failed: ${err instanceof Error ? err.message : String(err)}`);
   }
