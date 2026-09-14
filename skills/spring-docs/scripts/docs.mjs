@@ -160,11 +160,15 @@ function discard(path) {
 var LEFTOVER_TTL_MS = 60 * 60 * 1000;
 function sweepLeftovers(target) {
   const parent = dirname(target);
-  if (!existsSync(parent))
-    return;
   const prefix = basename(target);
   const cutoff = Date.now() - LEFTOVER_TTL_MS;
-  for (const name of readdirSync(parent)) {
+  let entries;
+  try {
+    entries = readdirSync(parent);
+  } catch {
+    return;
+  }
+  for (const name of entries) {
     if (!name.startsWith(`${prefix}.staging-`) && !name.startsWith(`${prefix}.replaced-`))
       continue;
     const path = join2(parent, name);

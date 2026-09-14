@@ -228,13 +228,20 @@ const LEFTOVER_TTL_MS = 60 * 60 * 1000
  */
 function sweepLeftovers(target: string): void {
   const parent = dirname(target)
-  // The cache directory does not exist yet on a first run, and this is now
-  // reached before anything creates it.
-  if (!existsSync(parent))
-    return
   const prefix = basename(target)
   const cutoff = Date.now() - LEFTOVER_TTL_MS
-  for (const name of readdirSync(parent)) {
+  let entries: string[]
+  try {
+    entries = readdirSync(parent)
+  }
+  catch {
+    // The cache directory does not exist yet on a first run, and it can also
+    // be a file, be unreadable, or vanish under us. None of that is a reason
+    // to reject a resolution that has its own answer for a broken cache — and
+    // an `existsSync` guard would still lose the race to a concurrent delete.
+    return
+  }
+  for (const name of entries) {
     if (!name.startsWith(`${prefix}.staging-`) && !name.startsWith(`${prefix}.replaced-`))
       continue
     const path = join(parent, name)

@@ -392,6 +392,22 @@ describe('resolveDocs', () => {
     expect(existsSync(abandoned)).toBe(false)
   })
 
+  test('reports unavailable rather than throwing when the cache path is unusable', async () => {
+    const fetchImpl: Fetcher = async (url) => {
+      if (url === CATALOG_URL)
+        return respond(catalogJson(TAG))
+      return respond('', false, 404)
+    }
+    // A file where the cache directory belongs: `readdirSync` throws ENOTDIR,
+    // and the sweep runs before the function has produced any result at all.
+    mkdirSync(join(cacheHome, DOCS_CACHE_SUBDIR, '..'), { recursive: true })
+    writeFileSync(join(cacheHome, DOCS_CACHE_SUBDIR), 'not a directory\n')
+
+    const result = await resolveDocs({ project: PROJECT, version: VERSION, cacheHome, fetchImpl })
+
+    expect(result.kind).toBe('unavailable')
+  })
+
   test('does not report a tree ready when its index is not a regular file', async () => {
     const archive = buildArchive(fixtures, `${PROJECT}-${VERSION}`, '# First\n')
     const digest = createHash('sha256').update(archive).digest('hex')
