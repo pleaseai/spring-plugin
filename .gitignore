@@ -22,3 +22,6 @@ coverage/
 
 # logs
 *.log
+
+# personal Claude Code settings — internal marketplace config stays out of the public repo
+.claude/settings.local.json
