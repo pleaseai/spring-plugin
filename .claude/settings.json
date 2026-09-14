@@ -12,6 +12,12 @@
     "vitest@pleaseai": true,
     "typescript-lsp@code-intelligence": true,
     "eslint-lsp@code-intelligence": true,
-    "ask@passionfactory": true    
+    "ask@passionfactory": true,
+    "github-actions@passionfactory": true,
+    "tidy-first@passionfactory": true,
+    "context@passionfactory": true,
+    "research@passionfactory": true,
+    "claude-code-docs@pleaseai": true,
+    "kb@passionfactory": true
   }
 }
