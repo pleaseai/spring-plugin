@@ -7,7 +7,7 @@
 import { Buffer } from "buffer";
 import { spawnSync } from "child_process";
 import { createHash, randomUUID } from "crypto";
-import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, readlinkSync, renameSync, rmSync, statSync, symlinkSync, writeFileSync } from "fs";
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, readlinkSync, renameSync, rmSync, statSync, symlinkSync, utimesSync, writeFileSync } from "fs";
 import { homedir } from "os";
 import { basename, dirname, join as join2 } from "path";
 import process from "process";
@@ -135,11 +135,19 @@ function isUsableTree(path) {
   }
 }
 function contentName(target, digest) {
-  return `${basename(target)}.content-${digest.slice(0, 12)}`;
+  return `${basename(target)}.content-${digest.slice(0, 12)}-${randomUUID()}`;
 }
 function isDirectoryEntry(path) {
   try {
     return lstatSync(path).isDirectory();
+  } catch {
+    return false;
+  }
+}
+function entryExists(path) {
+  try {
+    lstatSync(path);
+    return true;
   } catch {
     return false;
   }
@@ -154,13 +162,20 @@ function liveContent(target) {
 function publish(extracted, target, digest) {
   const name = contentName(target, digest);
   const content = join2(dirname(target), name);
-  if (!isUsableTree(content)) {
-    discard(content);
-    renameSync(extracted, content);
-  }
+  const superseded = liveContent(target);
+  renameSync(extracted, content);
   if (!linkOnto(target, name)) {
     swapOnto(content, target);
+    return;
   }
+  if (superseded !== undefined && superseded !== name)
+    retire(join2(dirname(target), superseded));
+}
+function retire(path) {
+  const now = new Date;
+  try {
+    utimesSync(path, now, now);
+  } catch {}
 }
 function linkOnto(target, name) {
   const junction = process.platform === "win32";
@@ -170,18 +185,25 @@ function linkOnto(target, name) {
   } catch {
     return false;
   }
+  let displaced;
   try {
-    const displaced = isDirectoryEntry(target) ? `${target}.replaced-${randomUUID()}` : undefined;
-    if (displaced !== undefined)
+    if (junction ? entryExists(target) : isDirectoryEntry(target)) {
+      displaced = `${target}.replaced-${randomUUID()}`;
       renameSync(target, displaced);
+    }
     renameSync(staged, target);
-    if (displaced !== undefined)
-      discard(displaced);
-    return true;
-  } catch (err) {
+  } catch {
+    if (displaced !== undefined && !entryExists(target)) {
+      try {
+        renameSync(displaced, target);
+      } catch {}
+    }
     discard(staged);
-    throw err;
+    return false;
   }
+  if (displaced !== undefined)
+    discard(displaced);
+  return true;
 }
 function swapOnto(content, target) {
   const displaced = existsSync(target) ? `${target}.replaced-${randomUUID()}` : undefined;
@@ -226,7 +248,7 @@ function sweepLeftovers(target) {
       continue;
     const path = join2(parent, name);
     try {
-      if (statSync(path).mtimeMs < cutoff)
+      if (lstatSync(path).mtimeMs < cutoff)
         rmSync(path, { recursive: true, force: true });
     } catch {}
   }

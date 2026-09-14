@@ -1,7 +1,7 @@
 import type { Fetcher } from '../docs.ts'
 import { Buffer } from 'node:buffer'
 import { createHash } from 'node:crypto'
-import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, readlinkSync, rmSync, utimesSync, writeFileSync } from 'node:fs'
+import { existsSync, lstatSync, lutimesSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, readlinkSync, rmSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
@@ -427,7 +427,10 @@ describe('resolveDocs', () => {
     expect(result.kind === 'ready' && result.path).toBe(docsCachePath(cacheHome, TAG))
     const target = docsCachePath(cacheHome, TAG)
     expect(lstatSync(target).isSymbolicLink()).toBe(true)
-    expect(readlinkSync(target)).toBe(`${TAG}.content-${digest.slice(0, 12)}`)
+    // Named for the digest of the bytes it holds, so the tree's provenance is
+    // readable off the directory listing, and suffixed so the name belongs to
+    // this publication alone rather than to everyone publishing these bytes.
+    expect(readlinkSync(target)).toStartWith(`${TAG}.content-${digest.slice(0, 12)}-`)
     // And reading through it still resolves, which is the only thing the
     // indirection may not cost.
     expect(readFileSync(join(target, '_index.md'), 'utf8')).toBe('# First\n')
@@ -445,25 +448,69 @@ describe('resolveDocs', () => {
       return respond(archive)
     }
     await resolveDocs({ project: PROJECT, version: VERSION, cacheHome, fetchImpl })
-    const superseded = `${docsCachePath(cacheHome, TAG)}.content-${createHash('sha256').update(first).digest('hex').slice(0, 12)}`
+    const target = docsCachePath(cacheHome, TAG)
+    const superseded = join(join(cacheHome, DOCS_CACHE_SUBDIR), readlinkSync(target))
 
+    // Aged past the TTL *before* the swap, which is the case the sweep gets
+    // wrong when it reads a content directory's extraction time: a tree that
+    // has been serving all day is exactly the one a reader is most likely to be
+    // inside when it is superseded.
+    const longAgo = new Date(Date.now() - 2 * 60 * 60 * 1000)
+    utimesSync(superseded, longAgo, longAgo)
     archive = second
     await resolveDocs({ project: PROJECT, version: VERSION, cacheHome, fetchImpl, refresh: true })
 
     // Left in place at first: a reader that opened the old tree before the swap
     // is still inside it, and deleting it under them is the failure the
-    // indirection exists to avoid.
-    expect(readFileSync(join(docsCachePath(cacheHome, TAG), '_index.md'), 'utf8')).toBe('# Second\n')
+    // indirection exists to avoid. Its hour runs from the swap, not from the
+    // extraction, so the next run does not reclaim it either.
+    expect(readFileSync(join(target, '_index.md'), 'utf8')).toBe('# Second\n')
+    await resolveDocs({ project: PROJECT, version: VERSION, cacheHome, fetchImpl })
     expect(existsSync(superseded)).toBe(true)
 
-    const longAgo = new Date(Date.now() - 2 * 60 * 60 * 1000)
     utimesSync(superseded, longAgo, longAgo)
     await resolveDocs({ project: PROJECT, version: VERSION, cacheHome, fetchImpl })
 
     // Once no reader can plausibly still be in it, the sweep reclaims it like
     // any other leftover — and never the tree the link currently points at.
     expect(existsSync(superseded)).toBe(false)
-    expect(readFileSync(join(docsCachePath(cacheHome, TAG), '_index.md'), 'utf8')).toBe('# Second\n')
+    expect(readFileSync(join(target, '_index.md'), 'utf8')).toBe('# Second\n')
+  })
+
+  test('reclaims a leftover link by its own age, not its target\'s', async () => {
+    const archive = buildArchive(fixtures, `${PROJECT}-${VERSION}`, '# First\n')
+    const digest = createHash('sha256').update(archive).digest('hex')
+    const fetchImpl: Fetcher = async (url) => {
+      if (url === CATALOG_URL)
+        return respond(catalogJson(TAG))
+      if (url === checksumUrl(TAG, PROJECT, VERSION))
+        return respond(`${digest}  ${archiveName(PROJECT, VERSION)}\n`)
+      return respond(archive)
+    }
+    await resolveDocs({ project: PROJECT, version: VERSION, cacheHome, fetchImpl })
+    const target = docsCachePath(cacheHome, TAG)
+
+    // A staged link a publication was killed before moving into place. Its
+    // target is the live tree, so ageing it through the link would read the
+    // tree's mtime instead — and a link left dangling has no target to read at
+    // all, which is how a leftover leaks forever rather than being reclaimed.
+    const stale = `${target}.link-stale`
+    const dangling = `${target}.link-dangling`
+    symlinkSync(readlinkSync(target), stale)
+    symlinkSync(`${TAG}.content-gone`, dangling)
+    // `lutimes`, so the link's own times move and not the live tree's.
+    const longAgo = new Date(Date.now() - 2 * 60 * 60 * 1000)
+    lutimesSync(stale, longAgo, longAgo)
+    lutimesSync(dangling, longAgo, longAgo)
+
+    const hit = await resolveDocs({ project: PROJECT, version: VERSION, cacheHome, fetchImpl })
+
+    expect(hit.kind === 'ready' && hit.cached).toBe(true)
+    expect(existsSync(join(target, '_index.md'))).toBe(true)
+    expect(lstatSync(target).isSymbolicLink()).toBe(true)
+    // Read off the directory listing, because `existsSync` follows a link and
+    // answers false for a dangling one that is still very much an entry.
+    expect(readdirSync(join(cacheHome, DOCS_CACHE_SUBDIR)).filter(n => n.includes('.link-'))).toEqual([])
   })
 
   test('converts a cache written before the indirection into a link', async () => {

@@ -25,7 +25,7 @@ import type { Catalog } from './lib/docs-cache.ts'
 import { Buffer } from 'node:buffer'
 import { spawnSync } from 'node:child_process'
 import { createHash, randomUUID } from 'node:crypto'
-import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, readlinkSync, renameSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs'
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, readlinkSync, renameSync, rmSync, statSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { basename, dirname, join } from 'node:path'
 import process from 'node:process'
@@ -169,15 +169,40 @@ function isUsableTree(path: string): boolean {
   }
 }
 
-/** Sibling directory holding the unpacked bytes of one archive, keyed by its digest. */
+/**
+ * Name for the sibling directory holding one publication's unpacked bytes.
+ *
+ * The digest is provenance — it says which archive the tree came from — and the
+ * random suffix is what makes the name this publication's alone. A name derived
+ * from the digest only would be shared by every publisher of those bytes, and
+ * two of them racing would each see it unusable, so the slower one would delete
+ * the tree the faster one had already published and linked.
+ */
 function contentName(target: string, digest: string): string {
-  return `${basename(target)}.content-${digest.slice(0, 12)}`
+  return `${basename(target)}.content-${digest.slice(0, 12)}-${randomUUID()}`
 }
 
 /** True when `path` is itself a directory — not a symlink that resolves to one. */
 function isDirectoryEntry(path: string): boolean {
   try {
     return lstatSync(path).isDirectory()
+  }
+  catch {
+    return false
+  }
+}
+
+/**
+ * True when anything at all occupies `path`.
+ *
+ * `lstat`, not `existsSync`: a link whose target is gone is still an entry
+ * `rename` has to contend with, and `existsSync` follows the link and answers
+ * that nothing is there.
+ */
+function entryExists(path: string): boolean {
+  try {
+    lstatSync(path)
+    return true
   }
   catch {
     return false
@@ -206,33 +231,52 @@ function liveContent(target: string): string | undefined {
 /**
  * Publish `extracted` at `target` without `target` ever being missing.
  *
- * The bytes land in a sibling directory named after their digest and `target`
- * becomes a symlink to it. Replacing a symlink is a single `rename`, which is
- * atomic: every reader sees either the old tree or the new one, never a gap.
- * Moving the tree itself into place could not offer that — `rename` will not
- * replace a populated directory, so the previous tree had to be moved aside
- * first, and between those two renames the path callers read did not exist.
+ * The bytes land in a sibling directory of their own and `target` becomes a
+ * link to it. Replacing a link is a single `rename`, which is atomic: every
+ * reader sees either the old tree or the new one, never a gap. Moving the tree
+ * itself into place could not offer that — `rename` will not replace a
+ * populated directory, so the previous tree had to be moved aside first, and
+ * between those two renames the path callers read did not exist.
  *
- * Keying on the digest also makes re-publication free when the bytes have not
- * changed, and leaves the superseded tree in place for readers that are still
- * inside it; {@link sweepLeftovers} reclaims it once nothing can be.
+ * The tree this supersedes is left where it is, because a reader that opened it
+ * a moment before the swap is still inside it; {@link sweepLeftovers} reclaims
+ * it once nothing can be.
  */
 function publish(extracted: string, target: string, digest: string): void {
   const name = contentName(target, digest)
   const content = join(dirname(target), name)
-
-  if (!isUsableTree(content)) {
-    // Not a duplicate — either new bytes, or a partial tree a killed run left
-    // under this digest. Either way the extracted copy is the good one.
-    discard(content)
-    renameSync(extracted, content)
-  }
+  const superseded = liveContent(target)
+  renameSync(extracted, content)
 
   if (!linkOnto(target, name)) {
-    // No symlink support (Windows outside Developer Mode, some filesystems).
-    // Fall back to moving the tree itself into place, which reopens the window
-    // this function exists to close — correctness over atomicity.
+    // No usable link (Windows outside Developer Mode, some filesystems), or a
+    // link that could not be moved into place. Fall back to moving the tree
+    // itself, which reopens the window this function exists to close —
+    // correctness over atomicity.
     swapOnto(content, target)
+    return
+  }
+
+  if (superseded !== undefined && superseded !== name)
+    retire(join(dirname(target), superseded))
+}
+
+/**
+ * Mark a content directory as superseded, as of now.
+ *
+ * The sweep ages a leftover by its mtime, and a content directory's mtime is
+ * when it was extracted. Without this, a tree that had been serving for longer
+ * than the TTL would be reclaimed by the very next run — so a reader that
+ * entered it just before the swap would get none of the grace period the swap
+ * exists to give them.
+ */
+function retire(path: string): void {
+  const now = new Date()
+  try {
+    utimesSync(path, now, now)
+  }
+  catch {
+    // Only costs the superseded tree its grace period; never the publication.
   }
 }
 
@@ -245,8 +289,9 @@ function publish(extracted: string, target: string, digest: string): void {
  * against an absolute path, so the link is written absolute there and relative
  * everywhere else, where a relative link keeps the cache tree movable.
  *
- * @returns false when the platform refuses to create a link at all, which is
- * the caller's signal to fall back.
+ * @returns false when the link could not be put in place, which is the caller's
+ * signal to fall back. Never throws and never ends with `target` emptier than
+ * it found it: a failure here still has to leave a usable cache behind.
  */
 function linkOnto(target: string, name: string): boolean {
   const junction = process.platform === 'win32'
@@ -258,23 +303,38 @@ function linkOnto(target: string, name: string): boolean {
     return false
   }
 
+  // One rename is the whole point, and two cases cannot have it. A populated
+  // directory at `target` — the layout this cache had before the indirection,
+  // and what the fallback writes — is something `rename` refuses to replace
+  // anywhere. And on Windows `rename` cannot replace *any* directory, which a
+  // junction is, so every publication there moves the old entry aside first and
+  // publishes through a window two metadata operations wide.
+  let displaced: string | undefined
   try {
-    // A real directory here is the pre-indirection layout, or a fallback
-    // publication. `rename` will not put a symlink over a directory, so that
-    // one publication still moves the old tree aside; every later one is the
-    // atomic symlink swap.
-    const displaced = isDirectoryEntry(target) ? `${target}.replaced-${randomUUID()}` : undefined
-    if (displaced !== undefined)
+    if (junction ? entryExists(target) : isDirectoryEntry(target)) {
+      displaced = `${target}.replaced-${randomUUID()}`
       renameSync(target, displaced)
+    }
     renameSync(staged, target)
-    if (displaced !== undefined)
-      discard(displaced)
-    return true
   }
-  catch (err) {
+  catch {
+    // Put the previous tree back — unless a concurrent publisher already
+    // refilled the path, in which case its tree is the one callers read.
+    if (displaced !== undefined && !entryExists(target)) {
+      try {
+        renameSync(displaced, target)
+      }
+      catch {
+        // Left for the caller's fallback, which publishes into the gap.
+      }
+    }
     discard(staged)
-    throw err
+    return false
   }
+
+  if (displaced !== undefined)
+    discard(displaced)
+  return true
 }
 
 /**
@@ -362,7 +422,12 @@ function sweepLeftovers(target: string): void {
       continue
     const path = join(parent, name)
     try {
-      if (statSync(path).mtimeMs < cutoff)
+      // `lstat`, not `stat`: a staged link resolves to a content directory that
+      // is usually older than the link itself, so following it would age a link
+      // created moments ago by the tree it points at and delete it out from
+      // under the publication in flight. A link whose target is already gone
+      // would not be aged at all — `stat` throws, and the leftover leaks.
+      if (lstatSync(path).mtimeMs < cutoff)
         rmSync(path, { recursive: true, force: true })
     }
     catch {
