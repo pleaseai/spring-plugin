@@ -1,0 +1,21 @@
+.please/docs/knowledge/gotchas.md
+  s_470668577f69be::t_f632dbde7bb6b6 9
+.please/docs/knowledge/tech-stack.md
+  s_470668577f69be::t_9ac0d9a6c007a0 11
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.23",
+  "base_commit_sha": "b3deb2094e906d200dfdfe12e37be193d3bff324",
+  "prompts": {},
+  "sessions": {
+    "s_470668577f69be": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "48cea888-d038-4781-965d-4b1006ac4ed1",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Minsu Lee <minsu.lee@pleaseai.dev>"
+    }
+  }
+}
