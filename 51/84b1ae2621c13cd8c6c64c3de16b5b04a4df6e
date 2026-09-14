@@ -1,0 +1,27 @@
+scripts/__tests__/docs.test.ts
+  s_470668577f69be::t_dc6eb7d428a2dc 4,501,503-504
+  s_470668577f69be::t_cef8b20fc8eedc 430-433,451-452,454-459,465-468,477-500,502,505-510
+  s_470668577f69be::t_c3a625047966a4 511-513
+scripts/docs.ts
+  s_470668577f69be::t_3bde12f6c33a61 28,172-180,182,195-211,234-239,241-243,248-249,252-255,257-279,292-294,306-312,314-315,317,320-330,332,334-337,425-430
+skills/spring-docs/scripts/docs.mjs
+  s_470668577f69be::t_383670dde7b491 10,138,147-154,165-166,169,171-178,188,190-191,193,195-200,202,204-206,251
+README.md
+  s_470668577f69be::t_383670dde7b491 130
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.23",
+  "base_commit_sha": "5184b1ae2621c13cd8c6c64c3de16b5b04a4df6e",
+  "prompts": {},
+  "sessions": {
+    "s_470668577f69be": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "48cea888-d038-4781-965d-4b1006ac4ed1",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Minsu Lee <minsu.lee@pleaseai.dev>"
+    }
+  }
+}
