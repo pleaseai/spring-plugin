@@ -6,7 +6,7 @@
 
 - **`bun run lint` requires Node 22+ in CI** — the eslint binary uses `#!/usr/bin/env node`. The Bun setup action does not install Node. Add `actions/setup-node@v4` before `oven-sh/setup-bun@v2`. Older Node (≤20) lacks `Object.groupBy` used by `eslint-flat-config-utils`. Local dev is fine because Node 22+ is usually already installed.
 
-- **Bun 1.3+ writes text-format `bun.lock`** (not legacy `bun.lockb`). `package.json` must pin `engines.bun: ">=1.3.0"`; lower Bun versions cannot read the new lockfile and will fail `bun install --frozen-lockfile`. Documented in `tech-stack.md` § Runtime.
+- **Bun 1.3+ writes text-format `bun.lock`** (not legacy `bun.lockb`); lower Bun versions cannot read the new lockfile and will fail `bun install --frozen-lockfile`. That is the floor the lockfile needs — `engines.bun` sits higher (`>=1.4.2`), because the committed skill bundles are byte-compared against CI's Bun (see below). Documented in `tech-stack.md` § Runtime.
 
 - **Committed skill bundles are Bun-version-coupled** — `bun run build:skill:check` byte-compares a fresh bundle against the committed one, so a Bun whose codegen differs from CI's pin fails the gate on an untouched source tree. Keep the local Bun and `ci.yml`'s `bun-version` on the same version; after bumping either, run `bun run build:skill` and commit the result, and raise `engines.bun` to match so a contributor on an older Bun is told before the gate tells them.
 
