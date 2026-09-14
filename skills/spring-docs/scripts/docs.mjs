@@ -159,6 +159,7 @@ function liveContent(target) {
     return;
   }
 }
+var LINK_ATTEMPTS = 2;
 function publish(extracted, target, digest) {
   const name = contentName(target, digest);
   const content = join2(dirname(target), name);
@@ -166,9 +167,11 @@ function publish(extracted, target, digest) {
   renameSync(extracted, content);
   if (superseded !== undefined && superseded !== name)
     retire(join2(dirname(target), superseded));
-  if (!linkOnto(target, name) && !linkOnto(target, name)) {
+  let linked = false;
+  for (let attempt = 0;attempt < LINK_ATTEMPTS && !linked; attempt++)
+    linked = linkOnto(target, name);
+  if (!linked)
     swapOnto(content, target);
-  }
 }
 function retire(path) {
   const now = new Date;

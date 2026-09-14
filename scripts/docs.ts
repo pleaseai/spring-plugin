@@ -228,6 +228,9 @@ function liveContent(target: string): string | undefined {
   }
 }
 
+/** How many times a publication tries to put its link in place before falling back. */
+const LINK_ATTEMPTS = 2
+
 /**
  * Publish `extracted` at `target` without `target` ever being missing.
  *
@@ -256,17 +259,22 @@ function publish(extracted: string, target: string, digest: string): void {
   if (superseded !== undefined && superseded !== name)
     retire(join(dirname(target), superseded))
 
-  // Retried once, because losing the link race is ordinary rather than exotic:
-  // on Windows every publication moves the old entry aside, so two refreshes
-  // overlap on a window rather than on an instant. Without the retry the loser
-  // falls back and replaces the winner's junction with a plain directory.
-  if (!linkOnto(target, name) && !linkOnto(target, name)) {
-    // No usable link at all (Windows outside Developer Mode, some filesystems),
-    // or one that could not be moved into place. Fall back to moving the tree
-    // itself, which reopens the window this function exists to close —
-    // correctness over atomicity.
+  // Attempted twice, because losing the link race is ordinary rather than
+  // exotic: on Windows every publication moves the old entry aside, so two
+  // refreshes overlap on a window rather than on an instant. Without the second
+  // attempt the loser falls back and replaces the winner's junction with a
+  // plain directory. A platform that cannot link at all fails both the same
+  // way and reaches the fallback regardless.
+  let linked = false
+  for (let attempt = 0; attempt < LINK_ATTEMPTS && !linked; attempt++)
+    linked = linkOnto(target, name)
+
+  // No usable link (Windows outside Developer Mode, some filesystems), or one
+  // that could not be moved into place. Fall back to moving the tree itself,
+  // which reopens the window this function exists to close — correctness over
+  // atomicity.
+  if (!linked)
     swapOnto(content, target)
-  }
 }
 
 /**
