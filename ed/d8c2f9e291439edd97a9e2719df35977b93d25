@@ -1,0 +1,27 @@
+scripts/docs.ts
+  s_470668577f69be::t_fd035380f32267 251-265,273,275-279,348-350,352
+  s_470668577f69be::t_35a33f4fef2d2b 28,284-289
+  s_470668577f69be::t_29f0e44ab3fe3a 365-369,380-381,387-389,391
+scripts/__tests__/docs.test.ts
+  s_470668577f69be::t_ba99c5e52dd9d5 6,52-63,445-447,513-514
+  s_470668577f69be::t_4b6f2c956a2548 553-558
+skills/spring-docs/scripts/docs.mjs
+  s_470668577f69be::t_4b6f2c956a2548 169-171,204,208,215-216,223
+  s_470668577f69be::t_35a33f4fef2d2b 10,176
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.23",
+  "base_commit_sha": "edd8c2f9e291439edd97a9e2719df35977b93d25",
+  "prompts": {},
+  "sessions": {
+    "s_470668577f69be": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "48cea888-d038-4781-965d-4b1006ac4ed1",
+        "model": "unknown"
+      },
+      "human_author": "Minsu Lee <minsu.lee@pleaseai.dev>"
+    }
+  }
+}
