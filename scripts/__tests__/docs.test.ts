@@ -3,7 +3,7 @@ import { Buffer } from 'node:buffer'
 import { createHash } from 'node:crypto'
 import { existsSync, lstatSync, lutimesSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, readlinkSync, rmSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { basename, dirname, join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
 import { resolveDocs } from '../docs.ts'
@@ -47,6 +47,18 @@ function respond(body: string | Buffer, ok = true, status = 200): Awaited<Return
       return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer
     },
   }
+}
+
+/**
+ * Link `at` to the cache entry named `name`, the way `publish` would.
+ *
+ * A junction on Windows, where the directory symlink `symlinkSync` defaults to
+ * needs Developer Mode or elevation — a fixture that cannot be created on an
+ * ordinary account fails the test before it reaches what it is testing.
+ */
+function linkTo(name: string, at: string): void {
+  const junction = process.platform === 'win32'
+  symlinkSync(junction ? join(dirname(at), basename(name)) : name, at, junction ? 'junction' : 'dir')
 }
 
 describe('resolveDocs', () => {
@@ -430,7 +442,9 @@ describe('resolveDocs', () => {
     // Named for the digest of the bytes it holds, so the tree's provenance is
     // readable off the directory listing, and suffixed so the name belongs to
     // this publication alone rather than to everyone publishing these bytes.
-    expect(readlinkSync(target)).toStartWith(`${TAG}.content-${digest.slice(0, 12)}-`)
+    // Compared as a basename, because a junction resolves only against an
+    // absolute path and Windows therefore stores the whole cache path here.
+    expect(basename(readlinkSync(target))).toStartWith(`${TAG}.content-${digest.slice(0, 12)}-`)
     // And reading through it still resolves, which is the only thing the
     // indirection may not cost.
     expect(readFileSync(join(target, '_index.md'), 'utf8')).toBe('# First\n')
@@ -496,8 +510,8 @@ describe('resolveDocs', () => {
     // all, which is how a leftover leaks forever rather than being reclaimed.
     const stale = `${target}.link-stale`
     const dangling = `${target}.link-dangling`
-    symlinkSync(readlinkSync(target), stale)
-    symlinkSync(`${TAG}.content-gone`, dangling)
+    linkTo(readlinkSync(target), stale)
+    linkTo(`${TAG}.content-gone`, dangling)
     // `lutimes`, so the link's own times move and not the live tree's.
     const longAgo = new Date(Date.now() - 2 * 60 * 60 * 1000)
     lutimesSync(stale, longAgo, longAgo)
@@ -536,6 +550,12 @@ describe('resolveDocs', () => {
     expect(lstatSync(target).isSymbolicLink()).toBe(true)
     expect(readFileSync(join(target, '_index.md'), 'utf8')).toBe('# First\n')
     expect(existsSync(join(target, 'stale.md'))).toBe(false)
+    // The tree it displaced is a whole documentation tree like any other, so it
+    // gets the same grace period rather than being deleted the moment the link
+    // lands — a reader that opened it before the swap is still walking it.
+    const replaced = readdirSync(join(cacheHome, DOCS_CACHE_SUBDIR)).filter(n => n.includes('.replaced-'))
+    expect(replaced).toHaveLength(1)
+    expect(readFileSync(join(cacheHome, DOCS_CACHE_SUBDIR, replaced[0]!, 'stale.md'), 'utf8')).toBe('from the old layout\n')
   })
 
   test('does not report a tree ready when its index is not a regular file', async () => {

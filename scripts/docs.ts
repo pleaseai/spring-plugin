@@ -25,7 +25,7 @@ import type { Catalog } from './lib/docs-cache.ts'
 import { Buffer } from 'node:buffer'
 import { spawnSync } from 'node:child_process'
 import { createHash, randomUUID } from 'node:crypto'
-import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, readlinkSync, renameSync, rmSync, statSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs'
+import { existsSync, lstatSync, lutimesSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, readlinkSync, renameSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { basename, dirname, join } from 'node:path'
 import process from 'node:process'
@@ -248,32 +248,45 @@ function publish(extracted: string, target: string, digest: string): void {
   const superseded = liveContent(target)
   renameSync(extracted, content)
 
-  if (!linkOnto(target, name)) {
-    // No usable link (Windows outside Developer Mode, some filesystems), or a
-    // link that could not be moved into place. Fall back to moving the tree
+  // Before the swap, not after: between the two, a concurrent sweep still reads
+  // the tree's extraction time, and an aged one is exactly what it deletes —
+  // out from under the readers this grace period exists for. Stamping it early
+  // costs nothing if the publication then fails, because the sweep never
+  // reclaims whatever the link currently points at.
+  if (superseded !== undefined && superseded !== name)
+    retire(join(dirname(target), superseded))
+
+  // Retried once, because losing the link race is ordinary rather than exotic:
+  // on Windows every publication moves the old entry aside, so two refreshes
+  // overlap on a window rather than on an instant. Without the retry the loser
+  // falls back and replaces the winner's junction with a plain directory.
+  if (!linkOnto(target, name) && !linkOnto(target, name)) {
+    // No usable link at all (Windows outside Developer Mode, some filesystems),
+    // or one that could not be moved into place. Fall back to moving the tree
     // itself, which reopens the window this function exists to close —
     // correctness over atomicity.
     swapOnto(content, target)
-    return
   }
-
-  if (superseded !== undefined && superseded !== name)
-    retire(join(dirname(target), superseded))
 }
 
 /**
- * Mark a content directory as superseded, as of now.
+ * Mark a superseded tree as retired, as of now.
  *
- * The sweep ages a leftover by its mtime, and a content directory's mtime is
- * when it was extracted. Without this, a tree that had been serving for longer
- * than the TTL would be reclaimed by the very next run — so a reader that
- * entered it just before the swap would get none of the grace period the swap
- * exists to give them.
+ * The sweep ages a leftover by its mtime, and a published tree's mtime is when
+ * it was extracted. Without this, a tree that had been serving for longer than
+ * the TTL would be reclaimed by the very next run — so a reader that entered it
+ * just before the swap would get none of the grace period the swap exists to
+ * give them.
  */
 function retire(path: string): void {
   const now = new Date()
   try {
-    utimesSync(path, now, now)
+    // `lutimes`, to stamp the entry rather than whatever it points at — the
+    // same side of the link the sweep reads it back from. `swapOnto` can hand
+    // this a link rather than a tree, and following it would age the tree the
+    // old link pointed at while leaving the entry the sweep actually sees
+    // untouched.
+    lutimesSync(path, now, now)
   }
   catch {
     // Only costs the superseded tree its grace period; never the publication.
@@ -332,8 +345,11 @@ function linkOnto(target: string, name: string): boolean {
     return false
   }
 
+  // Retired, not deleted: this is a whole documentation tree, and a reader that
+  // opened it a moment before the swap is still walking it. The sweep reclaims
+  // it once its grace period is up.
   if (displaced !== undefined)
-    discard(displaced)
+    retire(displaced)
   return true
 }
 
@@ -346,7 +362,11 @@ function linkOnto(target: string, name: string): boolean {
  * missing for as long as the delete took.
  */
 function swapOnto(content: string, target: string): void {
-  const displaced = existsSync(target) ? `${target}.replaced-${randomUUID()}` : undefined
+  // `entryExists`, not `existsSync`: after a link publication `target` can be a
+  // link whose tree is already gone, and `existsSync` follows it and answers
+  // that the path is free — then `rename` fails on the entry that is still
+  // there.
+  const displaced = entryExists(target) ? `${target}.replaced-${randomUUID()}` : undefined
   if (displaced !== undefined)
     renameSync(target, displaced)
   try {
@@ -357,17 +377,18 @@ function swapOnto(content: string, target: string): void {
     // concurrent publisher already refilled the path — then its tree is the one
     // callers read, and ours is debris rather than a restore candidate.
     if (displaced !== undefined) {
-      if (existsSync(target))
-        discard(displaced)
+      if (entryExists(target))
+        retire(displaced)
       else
         renameSync(displaced, target)
     }
     throw err
   }
-  // The new tree is published and readable from here on, so failing to delete
-  // the one it replaced is leftover debris, not a failed download.
+  // Retired rather than deleted, like every other superseded tree: the new one
+  // is published and readable from here on, and a reader that entered the old
+  // one before the swap keeps it for its grace period.
   if (displaced !== undefined)
-    discard(displaced)
+    retire(displaced)
 }
 
 /** Delete a directory nothing reads from any more, without failing the caller. */

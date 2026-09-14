@@ -7,7 +7,7 @@
 import { Buffer } from "buffer";
 import { spawnSync } from "child_process";
 import { createHash, randomUUID } from "crypto";
-import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, readlinkSync, renameSync, rmSync, statSync, symlinkSync, utimesSync, writeFileSync } from "fs";
+import { existsSync, lstatSync, lutimesSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, readlinkSync, renameSync, rmSync, statSync, symlinkSync, writeFileSync } from "fs";
 import { homedir } from "os";
 import { basename, dirname, join as join2 } from "path";
 import process from "process";
@@ -164,17 +164,16 @@ function publish(extracted, target, digest) {
   const content = join2(dirname(target), name);
   const superseded = liveContent(target);
   renameSync(extracted, content);
-  if (!linkOnto(target, name)) {
-    swapOnto(content, target);
-    return;
-  }
   if (superseded !== undefined && superseded !== name)
     retire(join2(dirname(target), superseded));
+  if (!linkOnto(target, name) && !linkOnto(target, name)) {
+    swapOnto(content, target);
+  }
 }
 function retire(path) {
   const now = new Date;
   try {
-    utimesSync(path, now, now);
+    lutimesSync(path, now, now);
   } catch {}
 }
 function linkOnto(target, name) {
@@ -202,26 +201,26 @@ function linkOnto(target, name) {
     return false;
   }
   if (displaced !== undefined)
-    discard(displaced);
+    retire(displaced);
   return true;
 }
 function swapOnto(content, target) {
-  const displaced = existsSync(target) ? `${target}.replaced-${randomUUID()}` : undefined;
+  const displaced = entryExists(target) ? `${target}.replaced-${randomUUID()}` : undefined;
   if (displaced !== undefined)
     renameSync(target, displaced);
   try {
     renameSync(content, target);
   } catch (err) {
     if (displaced !== undefined) {
-      if (existsSync(target))
-        discard(displaced);
+      if (entryExists(target))
+        retire(displaced);
       else
         renameSync(displaced, target);
     }
     throw err;
   }
   if (displaced !== undefined)
-    discard(displaced);
+    retire(displaced);
 }
 function discard(path) {
   try {
