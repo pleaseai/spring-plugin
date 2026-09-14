@@ -228,8 +228,25 @@ function liveContent(target: string): string | undefined {
   }
 }
 
-/** How many times a publication tries to put its link in place before falling back. */
-const LINK_ATTEMPTS = 2
+/**
+ * How a publication's attempt to put its link in place ended.
+ *
+ * `contended` and `unsupported` both mean "no link yet" but call for opposite
+ * responses: losing a race is worth another attempt, and a platform that cannot
+ * create the link at all fails identically however many times it is asked.
+ */
+type LinkOutcome = 'linked' | 'contended' | 'unsupported'
+
+/**
+ * How many times a publication re-attempts a *contended* link.
+ *
+ * Bounded rather than "until it succeeds": a rename can also fail for reasons no
+ * number of attempts fixes — a permission change, a filesystem going read-only —
+ * and an unbounded loop turns those into a hang instead of a fallback. Several
+ * attempts is already far more contention than a documentation cache sees, and
+ * the fallback below still publishes correctly when they run out.
+ */
+const LINK_ATTEMPTS = 5
 
 /**
  * Publish `extracted` at `target` without `target` ever being missing.
@@ -259,21 +276,18 @@ function publish(extracted: string, target: string, digest: string): void {
   if (superseded !== undefined && superseded !== name)
     retire(join(dirname(target), superseded))
 
-  // Attempted twice, because losing the link race is ordinary rather than
-  // exotic: on Windows every publication moves the old entry aside, so two
-  // refreshes overlap on a window rather than on an instant. Without the second
-  // attempt the loser falls back and replaces the winner's junction with a
-  // plain directory. A platform that cannot link at all fails both the same
-  // way and reaches the fallback regardless.
-  let linked = false
-  for (let attempt = 0; attempt < LINK_ATTEMPTS && !linked; attempt++)
-    linked = linkOnto(target, name)
+  // Re-attempted only while the link is losing a race. On Windows every
+  // publication moves the old entry aside, so concurrent refreshes overlap on a
+  // window rather than on an instant, and a loser that gave up would replace the
+  // winner's junction with a plain directory. A platform that cannot create the
+  // link at all reports that instead, and is not asked again.
+  let outcome: LinkOutcome = 'contended'
+  for (let attempt = 0; attempt < LINK_ATTEMPTS && outcome === 'contended'; attempt++)
+    outcome = linkOnto(target, name)
 
-  // No usable link (Windows outside Developer Mode, some filesystems), or one
-  // that could not be moved into place. Fall back to moving the tree itself,
-  // which reopens the window this function exists to close — correctness over
-  // atomicity.
-  if (!linked)
+  // Fall back to moving the tree itself, which reopens the window this function
+  // exists to close — correctness over atomicity.
+  if (outcome !== 'linked')
     swapOnto(content, target)
 }
 
@@ -310,18 +324,20 @@ function retire(path: string): void {
  * against an absolute path, so the link is written absolute there and relative
  * everywhere else, where a relative link keeps the cache tree movable.
  *
- * @returns false when the link could not be put in place, which is the caller's
- * signal to fall back. Never throws and never ends with `target` emptier than
- * it found it: a failure here still has to leave a usable cache behind.
+ * @returns how the attempt ended. Never throws and never ends with `target`
+ * emptier than it found it: a failure here still has to leave a usable cache
+ * behind.
  */
-function linkOnto(target: string, name: string): boolean {
+function linkOnto(target: string, name: string): LinkOutcome {
   const junction = process.platform === 'win32'
   const staged = `${target}.link-${randomUUID()}`
   try {
     symlinkSync(junction ? join(dirname(target), name) : name, staged, junction ? 'junction' : 'dir')
   }
   catch {
-    return false
+    // No link of either kind can be created here; asking again cannot change
+    // that, and the caller's fallback is the only way to publish at all.
+    return 'unsupported'
   }
 
   // One rename is the whole point, and two cases cannot have it. A populated
@@ -335,6 +351,11 @@ function linkOnto(target: string, name: string): boolean {
     if (junction ? entryExists(target) : isDirectoryEntry(target)) {
       displaced = `${target}.replaced-${randomUUID()}`
       renameSync(target, displaced)
+      // Retired the moment it is moved aside, not once the link lands: until it
+      // is stamped it still carries the mtime it was published with, which on a
+      // tree that had been serving for days is already past the cutoff — and a
+      // concurrent sweep would take it out from under its readers right here.
+      retire(displaced)
     }
     renameSync(staged, target)
   }
@@ -350,15 +371,15 @@ function linkOnto(target: string, name: string): boolean {
       }
     }
     discard(staged)
-    return false
+    // Someone else holds the path, or the filesystem refused the move. Either
+    // way another attempt is worth making before falling back.
+    return 'contended'
   }
 
-  // Retired, not deleted: this is a whole documentation tree, and a reader that
-  // opened it a moment before the swap is still walking it. The sweep reclaims
-  // it once its grace period is up.
-  if (displaced !== undefined)
-    retire(displaced)
-  return true
+  // `displaced` is left where it is — a whole documentation tree with readers
+  // possibly still inside it, already retired above, and reclaimed by the sweep
+  // once its grace period is up.
+  return 'linked'
 }
 
 /**
@@ -375,8 +396,12 @@ function swapOnto(content: string, target: string): void {
   // that the path is free — then `rename` fails on the entry that is still
   // there.
   const displaced = entryExists(target) ? `${target}.replaced-${randomUUID()}` : undefined
-  if (displaced !== undefined)
+  if (displaced !== undefined) {
     renameSync(target, displaced)
+    // Stamped here rather than after the swap, for the same reason as in
+    // `linkOnto`: until it is, an old tree is already past the sweep's cutoff.
+    retire(displaced)
+  }
   try {
     renameSync(content, target)
   }
@@ -384,19 +409,14 @@ function swapOnto(content: string, target: string): void {
     // Never end emptier than we started: put the previous tree back. Unless a
     // concurrent publisher already refilled the path — then its tree is the one
     // callers read, and ours is debris rather than a restore candidate.
-    if (displaced !== undefined) {
-      if (entryExists(target))
-        retire(displaced)
-      else
-        renameSync(displaced, target)
-    }
+    // Already retired above, so leaving it is enough when the path is taken.
+    if (displaced !== undefined && !entryExists(target))
+      renameSync(displaced, target)
     throw err
   }
-  // Retired rather than deleted, like every other superseded tree: the new one
-  // is published and readable from here on, and a reader that entered the old
-  // one before the swap keeps it for its grace period.
-  if (displaced !== undefined)
-    retire(displaced)
+  // `displaced` stays where it is: retired rather than deleted, like every other
+  // superseded tree, so a reader that entered it before the swap keeps it for
+  // its grace period.
 }
 
 /** Delete a directory nothing reads from any more, without failing the caller. */

@@ -553,9 +553,10 @@ describe('resolveDocs', () => {
     // The tree it displaced is a whole documentation tree like any other, so it
     // gets the same grace period rather than being deleted the moment the link
     // lands — a reader that opened it before the swap is still walking it.
-    const replaced = readdirSync(join(cacheHome, DOCS_CACHE_SUBDIR)).filter(n => n.includes('.replaced-'))
-    expect(replaced).toHaveLength(1)
-    expect(readFileSync(join(cacheHome, DOCS_CACHE_SUBDIR, replaced[0]!, 'stale.md'), 'utf8')).toBe('from the old layout\n')
+    const [replaced, ...rest] = readdirSync(join(cacheHome, DOCS_CACHE_SUBDIR)).filter(n => n.includes('.replaced-'))
+    expect(rest).toEqual([])
+    expect(replaced).toBeDefined()
+    expect(readFileSync(join(cacheHome, DOCS_CACHE_SUBDIR, replaced ?? '', 'stale.md'), 'utf8')).toBe('from the old layout\n')
   })
 
   test('does not report a tree ready when its index is not a regular file', async () => {

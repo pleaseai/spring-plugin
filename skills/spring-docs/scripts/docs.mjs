@@ -159,7 +159,7 @@ function liveContent(target) {
     return;
   }
 }
-var LINK_ATTEMPTS = 2;
+var LINK_ATTEMPTS = 5;
 function publish(extracted, target, digest) {
   const name = contentName(target, digest);
   const content = join2(dirname(target), name);
@@ -167,10 +167,10 @@ function publish(extracted, target, digest) {
   renameSync(extracted, content);
   if (superseded !== undefined && superseded !== name)
     retire(join2(dirname(target), superseded));
-  let linked = false;
-  for (let attempt = 0;attempt < LINK_ATTEMPTS && !linked; attempt++)
-    linked = linkOnto(target, name);
-  if (!linked)
+  let outcome = "contended";
+  for (let attempt = 0;attempt < LINK_ATTEMPTS && outcome === "contended"; attempt++)
+    outcome = linkOnto(target, name);
+  if (outcome !== "linked")
     swapOnto(content, target);
 }
 function retire(path) {
@@ -185,13 +185,14 @@ function linkOnto(target, name) {
   try {
     symlinkSync(junction ? join2(dirname(target), name) : name, staged, junction ? "junction" : "dir");
   } catch {
-    return false;
+    return "unsupported";
   }
   let displaced;
   try {
     if (junction ? entryExists(target) : isDirectoryEntry(target)) {
       displaced = `${target}.replaced-${randomUUID()}`;
       renameSync(target, displaced);
+      retire(displaced);
     }
     renameSync(staged, target);
   } catch {
@@ -201,29 +202,23 @@ function linkOnto(target, name) {
       } catch {}
     }
     discard(staged);
-    return false;
+    return "contended";
   }
-  if (displaced !== undefined)
-    retire(displaced);
-  return true;
+  return "linked";
 }
 function swapOnto(content, target) {
   const displaced = entryExists(target) ? `${target}.replaced-${randomUUID()}` : undefined;
-  if (displaced !== undefined)
+  if (displaced !== undefined) {
     renameSync(target, displaced);
+    retire(displaced);
+  }
   try {
     renameSync(content, target);
   } catch (err) {
-    if (displaced !== undefined) {
-      if (entryExists(target))
-        retire(displaced);
-      else
-        renameSync(displaced, target);
-    }
+    if (displaced !== undefined && !entryExists(target))
+      renameSync(displaced, target);
     throw err;
   }
-  if (displaced !== undefined)
-    retire(displaced);
 }
 function discard(path) {
   try {
