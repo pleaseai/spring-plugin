@@ -10,13 +10,27 @@ Answers Spring questions from the documentation of the version your project actu
 
 Two scripts and one skill are implemented: build-file detection, documentation resolution, and the `spring-docs` skill that ties them together. There are no slash commands yet — the skill is the interface, and Claude invokes it on its own when a question needs Spring documentation.
 
+## Install
+
+```bash
+npx skills add pleaseai/spring-plugin
+```
+
+This installs the `spring-docs` skill for whichever agents the
+[`skills` CLI](https://github.com/vercel-labs/skills) detects. It copies only the
+skill directory, which is why the scripts it runs are committed as
+dependency-free bundles inside it.
+
+The same directory also loads as a Claude Code plugin. There is no marketplace
+entry yet, so that route is the symlink under [Development](#development).
+
 ## What it does
 
 ```
 you: "does spring.jpa.open-in-view still default to true?"
 
-  ├─ scripts/detect.ts .           → build.gradle declares Boot 3.5.16
-  ├─ scripts/docs.ts boot 3.5.16   → ~/.cache/pleaseai-spring/docs/boot-3.5.16
+  ├─ detect.js .                   → build.gradle declares Boot 3.5.16
+  ├─ docs.js boot 3.5.16           → ~/.cache/pleaseai-spring/docs/boot-3.5.16
   └─ Claude reads _index.md, opens the pages it needs, answers from 3.5.16
 ```
 
@@ -35,7 +49,7 @@ The cache is keyed by release **tag**, not by version, so a corrected archive (`
 
 ## Usage
 
-The skill runs the scripts for you. To use them directly:
+The skill runs the scripts for you. To use them directly from a clone:
 
 ```bash
 # Which Boot version does this project declare?
@@ -60,6 +74,8 @@ bun run scripts/docs.ts boot 3.5.16 --refresh
   "cached": true
 }
 ```
+
+An installed skill runs the committed bundles instead, with `node` and no dependencies: `node <skill-dir>/scripts/docs.js boot 3.5.16`.
 
 A version that has not been published comes back as `kind: "unavailable"` with the issue tracker in `suggestion`. The skill is instructed not to quietly substitute a different version — answering from the wrong minor is the failure this plugin exists to prevent.
 
@@ -89,8 +105,10 @@ Framework, Security, Data and Cloud are not published yet. When they are, resolv
 ```
 .claude-plugin/plugin.json     plugin manifest
 skills/spring-docs/SKILL.md    the skill Claude invokes
+skills/spring-docs/scripts/    generated bundles — `bun run build:skill`, do not edit
 scripts/detect.ts              build-file detection (Gradle Groovy/Kotlin, Maven)
 scripts/docs.ts                catalog lookup, download, verify, unpack
+scripts/build-skill.ts         bundles the two entrypoints into the skill directory
 scripts/lib/                   pure helpers — no I/O
 scripts/__tests__/             bun tests
 ```
@@ -107,6 +125,7 @@ bun install
 bun run typecheck          # tsc --noEmit
 bun run lint               # eslint --max-warnings 0
 bun test                   # bun test runner
+bun run build:skill        # rebuild the committed skill bundles
 
 # Load it into Claude Code
 ln -s "$(pwd)" ~/.claude/plugins/spring

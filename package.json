@@ -16,6 +16,8 @@
   "scripts": {
     "test": "bun test",
     "test:coverage": "bun test --coverage --coverage-reporter=text --coverage-reporter=lcov",
+    "build:skill": "bun run scripts/build-skill.ts",
+    "build:skill:check": "bun run scripts/build-skill.ts --check",
     "coverage:check": "bun run scripts/coverage-check.ts",
     "typecheck": "tsc --noEmit",
     "lint": "eslint --max-warnings 0",
@@ -23,7 +25,6 @@
     "prepare": "husky"
   },
   "dependencies": {
-    "consola": "3.4.2",
     "fast-xml-parser": "^5.7.2"
   },
   "devDependencies": {

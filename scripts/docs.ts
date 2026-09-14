@@ -13,7 +13,7 @@
  * module owns the network and filesystem boundary.
  *
  * Usage:
- *   bun run scripts/docs.ts boot 4.1.1 [--refresh] [--no-fetch]
+ *   node scripts/docs.ts boot 4.1.1 [--refresh] [--no-fetch]
  *
  * Exit codes:
  *   0 — docs are on disk; `path` in the JSON output says where
@@ -23,6 +23,7 @@
 
 import type { Catalog } from './lib/docs-cache.ts'
 import { Buffer } from 'node:buffer'
+import { spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
@@ -156,9 +157,11 @@ function unpack(archive: Buffer, project: string, version: string, target: strin
   try {
     const archivePath = join(staging, archiveName(project, version))
     writeFileSync(archivePath, archive)
-    const result = Bun.spawnSync(['tar', '-xzf', archivePath, '-C', staging])
-    if (result.exitCode !== 0)
-      throw new Error(`tar exited ${result.exitCode}: ${result.stderr.toString().trim()}`)
+    const result = spawnSync('tar', ['-xzf', archivePath, '-C', staging], { encoding: 'utf8' })
+    if (result.error)
+      throw new Error(`could not run tar: ${result.error.message}`)
+    if (result.status !== 0)
+      throw new Error(`tar exited ${result.status}: ${(result.stderr ?? '').trim()}`)
 
     // Every archive entry sits under one `<project>-<version>/` directory, so
     // extraction never spills — that is the docs repo's packaging contract.

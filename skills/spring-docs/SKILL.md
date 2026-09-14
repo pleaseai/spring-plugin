@@ -1,5 +1,8 @@
 ---
 name: spring-docs
+allowed-tools:
+  - Bash(node ${CLAUDE_SKILL_DIR}/scripts/docs.js *)
+  - Bash(node ${CLAUDE_SKILL_DIR}/scripts/detect.js *)
 description: Open the reference documentation for one Spring project and version — Spring Boot 3.3.0-3.5.x and 4.0.8+. Use when answering a question about Spring behavior, configuration properties, auto-configuration, actuator, testing support or an upgrade path, and whenever the answer must match the version the project actually declares rather than the newest release. Takes "<project> <version>", e.g. "boot 3.5.16".
 ---
 
@@ -15,7 +18,7 @@ two projects on the same Spring version share one copy.
 Run this first, with the project key and the exact version:
 
 ```bash
-bun run scripts/docs.ts boot 3.5.16
+node ${CLAUDE_SKILL_DIR}/scripts/docs.js boot 3.5.16
 ```
 
 It prints JSON:
@@ -40,11 +43,11 @@ Add `--no-fetch` to require a cache hit (offline), or `--refresh` to re-download
 
 ## Which version to pass
 
-Use the version the project declares, not the newest one. `scripts/detect.ts`
+Use the version the project declares, not the newest one. `scripts/detect.js`
 reads it from `build.gradle`, `build.gradle.kts` or `pom.xml`:
 
 ```bash
-bun run scripts/detect.ts .
+node ${CLAUDE_SKILL_DIR}/scripts/detect.js .
 ```
 
 Ask the user only when detection returns `kind: "not-found"` or `"unsupported"`.
