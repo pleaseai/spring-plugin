@@ -29,8 +29,8 @@ entry yet, so that route is the symlink under [Development](#development).
 ```
 you: "does spring.jpa.open-in-view still default to true?"
 
-  ├─ detect.js .                   → build.gradle declares Boot 3.5.16
-  ├─ docs.js boot 3.5.16           → ~/.cache/pleaseai-spring/docs/boot-3.5.16
+  ├─ detect.mjs .                   → build.gradle declares Boot 3.5.16
+  ├─ docs.mjs boot 3.5.16           → ~/.cache/pleaseai-spring/docs/boot-3.5.16
   └─ Claude reads _index.md, opens the pages it needs, answers from 3.5.16
 ```
 
@@ -75,7 +75,7 @@ bun run scripts/docs.ts boot 3.5.16 --refresh
 }
 ```
 
-An installed skill runs the committed bundles instead, with `node` and no dependencies: `node <skill-dir>/scripts/docs.js boot 3.5.16`.
+An installed skill runs the committed bundles instead, with `node` and no dependencies: `node <skill-dir>/scripts/docs.mjs boot 3.5.16`.
 
 A version that has not been published comes back as `kind: "unavailable"` with the issue tracker in `suggestion`. The skill is instructed not to quietly substitute a different version — answering from the wrong minor is the failure this plugin exists to prevent.
 

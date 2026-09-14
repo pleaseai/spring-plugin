@@ -33,7 +33,7 @@ skill executes at runtime therefore lives inside its own directory.
 - Manifest at `.claude-plugin/plugin.json` (only file in that dir).
 - TypeScript sources stay at the plugin root (`scripts/`) where tests, typecheck
   and lint reach them.
-- `bun run build:skill` bundles them into `skills/spring-docs/scripts/*.js` —
+- `bun run build:skill` bundles them into `skills/spring-docs/scripts/*.mjs` —
   dependency-free, committed, and run with `node`.
 - Skill content references scripts through `${CLAUDE_SKILL_DIR}`, which resolves
   at the personal, project **and** plugin level. `${CLAUDE_PLUGIN_ROOT}` is
@@ -131,7 +131,7 @@ bun run scripts/fetch.ts framework 6.2.1 --output /tmp/spring-framework-6.2.1
 
 ## Out of Stack
 
-- **No bundler** — `bun` runs `.ts` directly.
+- **No bundler for the plugin channel** — `bun` runs `.ts` directly. `Bun.build` is used for one thing only: the committed skill bundles the standalone channel needs (see § Two install channels).
 - **No frontend framework** — there is no UI; all output is terminal/files.
 - **No database** — caches use the filesystem under `~/.cache/pleaseai-spring/`.
 - **No long-running server** — every command is a one-shot invocation.

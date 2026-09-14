@@ -7,7 +7,7 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
 import { resolveDocs } from '../docs.ts'
-import { archiveName, archiveUrl, CATALOG_URL, checksumUrl, docsCachePath } from '../lib/docs-cache.ts'
+import { archiveName, archiveUrl, CATALOG_URL, checksumUrl, DOCS_CACHE_SUBDIR, docsCachePath } from '../lib/docs-cache.ts'
 
 const PROJECT = 'boot'
 const VERSION = '4.1.1'
@@ -39,7 +39,13 @@ function respond(body: string | Buffer, ok = true, status = 200): Awaited<Return
     ok,
     status,
     text: async () => (typeof body === 'string' ? body : body.toString()),
-    arrayBuffer: async () => (typeof body === 'string' ? Buffer.from(body) : body).buffer as ArrayBuffer,
+    arrayBuffer: async () => {
+      // Sliced to the view, not handed the whole backing store: a Buffer sits
+      // in a pooled slab far larger than its payload, and `.buffer` would make
+      // the caller hash the slab instead of the archive.
+      const buf = typeof body === 'string' ? Buffer.from(body) : body
+      return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer
+    },
   }
 }
 
@@ -164,7 +170,7 @@ describe('resolveDocs', () => {
       expect(result.reason).toContain('checksum mismatch')
     expect(existsSync(docsCachePath(cacheHome, TAG))).toBe(false)
     // Not even a staging directory survives a rejected download.
-    const docsRoot = join(cacheHome, '.cache', 'pleaseai-spring', 'docs')
+    const docsRoot = join(cacheHome, DOCS_CACHE_SUBDIR)
     expect(existsSync(docsRoot) ? readdirSync(docsRoot) : []).toEqual([])
   })
 

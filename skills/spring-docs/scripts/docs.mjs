@@ -27,6 +27,8 @@ function lookupTag(catalog, project, version) {
   const entry = versions[version];
   if (!entry)
     return { kind: "unknown-version", project, version, known: Object.keys(versions) };
+  if (entry.released_at === null)
+    return { kind: "unpublished", project, version, tag: entry.tag };
   return { kind: "found", tag: entry.tag, releasedAt: entry.released_at };
 }
 function archiveName(project, version) {
@@ -228,6 +230,8 @@ async function resolveDocs(options) {
       return unavailable(project, version, `${DOCS_REPO} publishes no project "${project}"`, `known projects: ${lookup.known.join(", ") || "none"}`);
     case "unknown-version":
       return unavailable(project, version, `${DOCS_REPO} has not published ${project} ${version}`, `open an issue at https://github.com/${DOCS_REPO}/issues to have it built`);
+    case "unpublished":
+      return unavailable(project, version, `${DOCS_REPO} reserved ${lookup.tag} for ${project} ${version} but has published no archive under it`, `open an issue at https://github.com/${DOCS_REPO}/issues to have it built`);
   }
   const { tag } = lookup;
   if (!isSafeSegment(tag)) {

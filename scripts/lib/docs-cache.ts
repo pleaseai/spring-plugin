@@ -49,6 +49,7 @@ export type LookupFailure
   = | { kind: 'schema', found: string }
     | { kind: 'unknown-project', project: string, known: string[] }
     | { kind: 'unknown-version', project: string, version: string, known: string[] }
+    | { kind: 'unpublished', project: string, version: string, tag: string }
 
 export type LookupResult
   = | { kind: 'found', tag: string, releasedAt: string | null }
@@ -72,6 +73,12 @@ export function lookupTag(catalog: Catalog, project: string, version: string): L
   const entry = versions[version]
   if (!entry)
     return { kind: 'unknown-version', project, version, known: Object.keys(versions) }
+
+  // A null `released_at` is the catalog saying the tag is reserved but carries
+  // no assets yet. Downloading from it returns 404, which reads as an
+  // unreachable network rather than as the "not built yet" it is.
+  if (entry.released_at === null)
+    return { kind: 'unpublished', project, version, tag: entry.tag }
 
   return { kind: 'found', tag: entry.tag, releasedAt: entry.released_at }
 }

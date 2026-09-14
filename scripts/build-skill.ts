@@ -23,6 +23,16 @@ import process from 'node:process'
 
 const ENTRYPOINTS = ['scripts/docs.ts', 'scripts/detect.ts']
 const OUTDIR = 'skills/spring-docs/scripts'
+/**
+ * Extension of the bundles.
+ *
+ * `.mjs`, not `.js`: the output is ESM and the skill directory carries no
+ * `package.json` to declare that, so a `.js` bundle is a CommonJS file to every
+ * Node that does not detect module syntax on its own — unflagged only since
+ * 22.7. There it dies on the first `import` before resolving any docs, and the
+ * standalone install channel is exactly where no `package.json` can be added.
+ */
+const EXT = '.mjs'
 /** The entrypoint's own `#!/usr/bin/env bun` line, replaced by the node one. */
 const SHEBANG = /^#![^\n]*\n/
 
@@ -69,7 +79,7 @@ async function main(argv: string[]): Promise<number> {
   const stale: string[] = []
 
   for (const entrypoint of ENTRYPOINTS) {
-    const outfile = join(OUTDIR, `${basename(entrypoint, '.ts')}.js`)
+    const outfile = join(OUTDIR, `${basename(entrypoint, '.ts')}${EXT}`)
     const contents = await bundle(entrypoint)
 
     if (check) {

@@ -359,6 +359,13 @@ export async function resolveDocs(options: ResolveOptions): Promise<ResolveResul
         `${DOCS_REPO} has not published ${project} ${version}`,
         `open an issue at https://github.com/${DOCS_REPO}/issues to have it built`,
       )
+    case 'unpublished':
+      return unavailable(
+        project,
+        version,
+        `${DOCS_REPO} reserved ${lookup.tag} for ${project} ${version} but has published no archive under it`,
+        `open an issue at https://github.com/${DOCS_REPO}/issues to have it built`,
+      )
   }
 
   const { tag } = lookup

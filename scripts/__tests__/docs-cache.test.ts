@@ -108,6 +108,24 @@ describe('isSafeSegment', () => {
   })
 })
 
+describe('lookupTag — unpublished entries', () => {
+  test('reports a reserved tag with no archive as unpublished, not found', () => {
+    const catalog = {
+      version: '1',
+      generated_at: null,
+      projects: { boot: { '9.9.9': { tag: 'boot-9.9.9', released_at: null } } },
+    }
+    // Downloading from a reserved-but-empty tag 404s, which reads as an
+    // unreachable network rather than as the "not built yet" it is.
+    expect(lookupTag(catalog, 'boot', '9.9.9')).toEqual({
+      kind: 'unpublished',
+      project: 'boot',
+      version: '9.9.9',
+      tag: 'boot-9.9.9',
+    })
+  })
+})
+
 describe('isCatalog', () => {
   test('accepts a well-formed catalog', () => {
     expect(isCatalog(CATALOG)).toBe(true)
