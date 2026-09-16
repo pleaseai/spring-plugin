@@ -174,6 +174,22 @@ describe('summarizeCatalog', () => {
     },
   }
 
+  /** The order `summarizeCatalog` puts these boot versions in. */
+  function publishedOrder(...versions: string[]): string[] {
+    const catalog = {
+      ...MULTI,
+      projects: {
+        boot: Object.fromEntries(
+          versions.map(v => [v, { tag: `boot-${v}`, released_at: '2026-01-01T00:00:00Z' }]),
+        ),
+      },
+    }
+    const summary = summarizeCatalog(catalog, 'boot')
+    if (summary.kind !== 'coverage')
+      throw new Error(`expected coverage, got ${summary.kind}`)
+    return summary.projects[0]?.published ?? []
+  }
+
   test('reports every project, with reserved tags kept out of the published list', () => {
     expect(summarizeCatalog(MULTI)).toEqual({
       kind: 'coverage',
@@ -206,36 +222,14 @@ describe('summarizeCatalog', () => {
   })
 
   test('orders a shorter version before the longer one it prefixes', () => {
-    const catalog = {
-      ...MULTI,
-      projects: {
-        boot: {
-          '4.0': { tag: 'boot-4.0', released_at: '2026-01-01T00:00:00Z' },
-          '4.0.8': { tag: 'boot-4.0.8', released_at: '2026-01-01T00:00:00Z' },
-          '4': { tag: 'boot-4', released_at: '2026-01-01T00:00:00Z' },
-        },
-      },
-    }
-    const summary = summarizeCatalog(catalog, 'boot')
-    expect(summary.kind === 'coverage' && summary.projects[0]?.published).toEqual(['4', '4.0', '4.0.8'])
+    expect(publishedOrder('4.0', '4.0.8', '4')).toEqual(['4', '4.0', '4.0.8'])
   })
 
   test('keeps comparing past a numeric tie, so a leading zero cannot hide a later difference', () => {
     // '1.02.3' and '1.2.4' agree at the '02'/'2' chunk. Settling on that tie
     // reported two different versions as equal and left the rest of the list
     // in input order.
-    const catalog = {
-      ...MULTI,
-      projects: {
-        boot: {
-          '1.2.4': { tag: 'boot-1.2.4', released_at: '2026-01-01T00:00:00Z' },
-          '1.02.3': { tag: 'boot-1.02.3', released_at: '2026-01-01T00:00:00Z' },
-          '1.2.1': { tag: 'boot-1.2.1', released_at: '2026-01-01T00:00:00Z' },
-        },
-      },
-    }
-    const summary = summarizeCatalog(catalog, 'boot')
-    expect(summary.kind === 'coverage' && summary.projects[0]?.published).toEqual(['1.2.1', '1.02.3', '1.2.4'])
+    expect(publishedOrder('1.2.4', '1.02.3', '1.2.1')).toEqual(['1.2.1', '1.02.3', '1.2.4'])
   })
 
   test('refuses a catalog schema it does not understand, as lookupTag does', () => {
