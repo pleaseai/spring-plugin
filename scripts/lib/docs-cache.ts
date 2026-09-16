@@ -203,3 +203,87 @@ export function parseChecksum(contents: string, expectedName: string): string | 
     return undefined
   return match[1].toLowerCase()
 }
+
+/** What one project publishes, as reported by {@link summarizeCatalog}. */
+export interface ProjectCoverage {
+  project: string
+  /** Versions with an archive on a release, in natural order. */
+  published: string[]
+  /** Versions whose tag is reserved but carries no archive yet. */
+  unpublished: string[]
+}
+
+/** Outcome of reading coverage out of a catalog. */
+export type CoverageResult
+  = | { kind: 'coverage', projects: ProjectCoverage[] }
+    | { kind: 'schema', found: string }
+    | { kind: 'unknown-project', project: string, known: string[] }
+
+/**
+ * Report what the catalog publishes, for every project or just one.
+ *
+ * The counterpart to {@link lookupTag}: that one answers "can I have this
+ * version", this one answers "which versions are there at all". Both read the
+ * same catalog, so a coverage listing can never drift from what a resolution
+ * would actually find — which is the whole reason the skill stopped carrying a
+ * hand-written list.
+ */
+export function summarizeCatalog(catalog: Catalog, project?: string): CoverageResult {
+  if (catalog.version !== SUPPORTED_CATALOG_VERSION)
+    return { kind: 'schema', found: catalog.version }
+
+  const names = Object.keys(catalog.projects).sort()
+  if (project !== undefined && !names.includes(project))
+    return { kind: 'unknown-project', project, known: names }
+
+  const wanted = project === undefined ? names : [project]
+  return { kind: 'coverage', projects: wanted.map(name => coverageOf(catalog, name)) }
+}
+
+function coverageOf(catalog: Catalog, project: string): ProjectCoverage {
+  const versions = catalog.projects[project] ?? {}
+  const published: string[] = []
+  const unpublished: string[] = []
+  for (const [version, entry] of Object.entries(versions))
+    (entry.released_at === null ? unpublished : published).push(version)
+  published.sort(compareVersions)
+  unpublished.sort(compareVersions)
+  return { project, published, unpublished }
+}
+
+/** Digit runs and non-digit runs, so `3.5.10` sorts after `3.5.9` rather than before it. */
+const VERSION_CHUNK_RE = /\d+|\D+/g
+
+/** Whether a chunk from {@link VERSION_CHUNK_RE} is the digit kind. */
+const DIGIT_CHUNK_RE = /^\d/
+
+/**
+ * Order two versions naturally — digit runs compared as numbers.
+ *
+ * Display order for a listing, not semver precedence: a prerelease suffix sorts
+ * after its release (`7.0.0` then `7.0.0-RC1`) because this compares text, not
+ * semver. Nothing resolves a version through this, so the difference only
+ * affects where a line appears.
+ *
+ * Sorting at all is deliberate. The catalog happens to be generated in order
+ * today, but that is a property of a generator in another repository, and a
+ * coverage report that silently reorders itself when that generator changes is
+ * worse than one that always decides for itself.
+ */
+function compareVersions(a: string, b: string): number {
+  const left = a.match(VERSION_CHUNK_RE) ?? []
+  const right = b.match(VERSION_CHUNK_RE) ?? []
+  for (let i = 0; i < Math.max(left.length, right.length); i++) {
+    const x = left[i]
+    const y = right[i]
+    if (x === undefined)
+      return -1
+    if (y === undefined)
+      return 1
+    if (x === y)
+      continue
+    const numeric = DIGIT_CHUNK_RE.test(x) && DIGIT_CHUNK_RE.test(y)
+    return numeric ? Number(x) - Number(y) : (x < y ? -1 : 1)
+  }
+  return 0
+}
