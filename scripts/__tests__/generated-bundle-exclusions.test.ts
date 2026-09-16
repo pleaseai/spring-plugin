@@ -12,15 +12,14 @@
  * Each reader below takes the *active* setting, never the file's raw text: a
  * commented-out exclusion still contains a pattern that would match, so a text
  * scan passes while the analyser receives nothing — the same blind spot one
- * level down. ESLint's is read from the evaluated config, and the other two
- * from a line that a leading `#` disqualifies.
+ * level down. Each reader therefore drops the file's comment lines before it
+ * takes anything from them.
  *
  * `Bun.Glob` stands in for three matchers it is not, so a pass is not proof
  * that SonarCloud reads a pattern the same way. What it does catch is the
  * failure that actually happened: a pattern that matches no bundle at all.
  */
 import { join } from 'node:path'
-import { pathToFileURL } from 'node:url'
 
 import { describe, expect, test } from 'bun:test'
 
@@ -54,24 +53,32 @@ async function codacyExclusions(): Promise<string[]> {
 
   const patterns: string[] = []
   for (const line of source.slice(start + 1)) {
-    const entry = /^\s+-\s*'([^']+)'/.exec(line)
-    if (entry) {
-      patterns.push(entry[1] ?? '')
+    const entry = line.trim()
+    if (entry.startsWith('- \'') && entry.endsWith('\'')) {
+      patterns.push(entry.slice(3, -1))
       continue
     }
     // A comment or a blank line sits inside the block; anything else ends it.
-    if (line.trim() !== '' && !line.trimStart().startsWith('#'))
+    if (entry !== '' && !entry.startsWith('#'))
       break
   }
   return patterns.filter(p => p.startsWith('skills/'))
 }
 
-/** The `skills/` ignore patterns ESLint actually loads, off the evaluated config. */
+/**
+ * The `skills/` ignore patterns in `eslint.config.js`'s `ignores` array.
+ *
+ * Read as text with comment lines dropped, not by importing the module. The
+ * evaluated config would be the stronger source, but reaching it needs either a
+ * non-literal dynamic `import()` or `allowJs` in `tsconfig.json`, and neither is
+ * worth a project-wide change here. Dropping `//` lines closes the gap that
+ * matters: a commented-out ignore no longer supplies a pattern that passes.
+ */
 async function eslintIgnores(): Promise<string[]> {
-  const config = (await import(pathToFileURL(join(ROOT, 'eslint.config.js')).href)) as {
-    default: { ignores?: string[] }[]
-  }
-  return config.default.flatMap(entry => entry.ignores ?? []).filter(p => p.startsWith('skills/'))
+  return (await lines('eslint.config.js'))
+    .map(l => l.trim())
+    .filter(l => !l.startsWith('//') && l.startsWith('\'skills/'))
+    .map(l => l.slice(1, l.indexOf('\'', 1)))
 }
 
 function expectCoversBundles(patterns: string[]): void {
