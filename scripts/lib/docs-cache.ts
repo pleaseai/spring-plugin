@@ -232,7 +232,7 @@ export function summarizeCatalog(catalog: Catalog, project?: string): CoverageRe
   if (catalog.version !== SUPPORTED_CATALOG_VERSION)
     return { kind: 'schema', found: catalog.version }
 
-  const names = Object.keys(catalog.projects).sort(compareCodePoints)
+  const names = Object.keys(catalog.projects).sort(compareCodeUnits)
   if (project !== undefined && !names.includes(project))
     return { kind: 'unknown-project', project, known: names }
 
@@ -252,13 +252,20 @@ function coverageOf(catalog: Catalog, project: string): ProjectCoverage {
 }
 
 /**
- * Order two strings by code point, the order a bare `.sort()` implies.
+ * Order two strings by UTF-16 code unit — the order a bare `.sort()` implies.
  *
- * Spelled out rather than left implicit, and deliberately not `localeCompare`:
- * project keys are ASCII identifiers, this order is asserted in tests, and a
- * locale-sensitive collation would vary with the machine running the CLI.
+ * Code *unit*, not code point: `<` compares UTF-16 units, so a non-BMP
+ * character (stored as a surrogate pair) sorts by its leading surrogate rather
+ * than by its scalar value. Left that way on purpose. What this order has to be
+ * is reproducible, since it is asserted in tests and read by tooling, and code
+ * unit order is exactly as reproducible as code point order; a key that could
+ * expose the difference carries a character `isSafeSegment` rejects, so it
+ * never resolves to documentation whatever position it sorts into.
+ *
+ * Spelled out rather than left implicit, and deliberately not `localeCompare`,
+ * which would vary with the locale of the machine running the CLI.
  */
-function compareCodePoints(a: string, b: string): number {
+function compareCodeUnits(a: string, b: string): number {
   if (a === b)
     return 0
   return a < b ? -1 : 1
@@ -298,7 +305,7 @@ function compareVersions(a: string, b: string): number {
     const numeric = DIGIT_CHUNK_RE.test(x) && DIGIT_CHUNK_RE.test(y)
     if (numeric)
       return Number(x) - Number(y)
-    return compareCodePoints(x, y)
+    return compareCodeUnits(x, y)
   }
   return 0
 }

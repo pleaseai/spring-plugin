@@ -89,7 +89,7 @@ function parseChecksum(contents, expectedName) {
 function summarizeCatalog(catalog, project) {
   if (catalog.version !== SUPPORTED_CATALOG_VERSION)
     return { kind: "schema", found: catalog.version };
-  const names = Object.keys(catalog.projects).sort(compareCodePoints);
+  const names = Object.keys(catalog.projects).sort(compareCodeUnits);
   if (project !== undefined && !names.includes(project))
     return { kind: "unknown-project", project, known: names };
   const wanted = project === undefined ? names : [project];
@@ -105,7 +105,7 @@ function coverageOf(catalog, project) {
   unpublished.sort(compareVersions);
   return { project, published, unpublished };
 }
-function compareCodePoints(a, b) {
+function compareCodeUnits(a, b) {
   if (a === b)
     return 0;
   return a < b ? -1 : 1;
@@ -127,7 +127,7 @@ function compareVersions(a, b) {
     const numeric = DIGIT_CHUNK_RE.test(x) && DIGIT_CHUNK_RE.test(y);
     if (numeric)
       return Number(x) - Number(y);
-    return compareCodePoints(x, y);
+    return compareCodeUnits(x, y);
   }
   return 0;
 }
