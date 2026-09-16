@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os'
 import { basename, dirname, join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
-import { resolveDocs } from '../docs.ts'
+import { listDocs, parseArgs, resolveDocs } from '../docs.ts'
 import { archiveName, archiveUrl, CATALOG_URL, checksumUrl, DOCS_CACHE_SUBDIR, docsCachePath } from '../lib/docs-cache.ts'
 
 const PROJECT = 'boot'
@@ -584,5 +584,117 @@ describe('resolveDocs', () => {
     expect(archiveRequests).toBe(2)
     expect(repaired.kind === 'ready' && repaired.cached).toBe(false)
     expect(readFileSync(index, 'utf8')).toBe('# First\n')
+  })
+})
+
+describe('listDocs', () => {
+  const COVERAGE_CATALOG = JSON.stringify({
+    version: '1',
+    generated_at: '2026-09-15T13:47:09.470Z',
+    projects: {
+      boot: {
+        '3.5.16': { tag: 'boot-3.5.16', released_at: '2026-09-12T12:36:20Z' },
+        '4.1.1': { tag: 'boot-4.1.1', released_at: null },
+      },
+      framework: { '7.0.9': { tag: 'framework-7.0.9', released_at: '2026-09-15T13:43:47Z' } },
+    },
+  })
+
+  function serving(body: string, ok = true, status = 200): { fetchImpl: Fetcher, requested: string[] } {
+    const requested: string[] = []
+    const fetchImpl: Fetcher = async (url) => {
+      requested.push(url)
+      return respond(body, ok, status)
+    }
+    return { fetchImpl, requested }
+  }
+
+  test('reports every project the catalog publishes, reading only the catalog', async () => {
+    const { fetchImpl, requested } = serving(COVERAGE_CATALOG)
+    const result = await listDocs({ fetchImpl })
+
+    expect(result).toEqual({
+      kind: 'coverage',
+      generatedAt: '2026-09-15T13:47:09.470Z',
+      projects: [
+        { project: 'boot', published: ['3.5.16'], unpublished: ['4.1.1'] },
+        { project: 'framework', published: ['7.0.9'], unpublished: [] },
+      ],
+    })
+    // No archive and no checksum: a coverage question must never cost a download.
+    expect(requested).toEqual([CATALOG_URL])
+  })
+
+  test('narrows to one project', async () => {
+    const { fetchImpl } = serving(COVERAGE_CATALOG)
+    const result = await listDocs({ fetchImpl, project: 'framework' })
+    expect(result).toMatchObject({ kind: 'coverage', projects: [{ project: 'framework' }] })
+  })
+
+  test('names the known projects for one the docs repo does not publish', async () => {
+    const { fetchImpl } = serving(COVERAGE_CATALOG)
+    const result = await listDocs({ fetchImpl, project: 'security' })
+    expect(result).toEqual({
+      kind: 'unavailable',
+      reason: 'pleaseai/spring-docs publishes no project "security"',
+      suggestion: 'known projects: boot, framework',
+    })
+  })
+
+  test('reports an unreachable catalog rather than throwing', async () => {
+    const { fetchImpl } = serving('not found', false, 404)
+    const result = await listDocs({ fetchImpl })
+    expect(result).toMatchObject({
+      kind: 'unavailable',
+      suggestion: 'check network access to raw.githubusercontent.com',
+    })
+  })
+
+  test('reports a catalog whose shape it does not recognize', async () => {
+    const { fetchImpl } = serving(JSON.stringify({ version: '1', projects: [] }))
+    expect(await listDocs({ fetchImpl })).toEqual({
+      kind: 'unavailable',
+      reason: 'catalog.json does not have the expected shape',
+      suggestion: 'update the plugin',
+    })
+  })
+
+  test('reports a catalog schema newer than this plugin', async () => {
+    const { fetchImpl } = serving(JSON.stringify({ version: '2', generated_at: null, projects: {} }))
+    expect(await listDocs({ fetchImpl })).toEqual({
+      kind: 'unavailable',
+      reason: 'catalog.json is schema version 2, this plugin understands 1',
+      suggestion: 'update the plugin',
+    })
+  })
+})
+
+describe('parseArgs', () => {
+  test('reads a resolution', () => {
+    expect(parseArgs(['boot', '4.1.1', '--refresh'])).toEqual({
+      mode: 'resolve',
+      project: 'boot',
+      version: '4.1.1',
+      refresh: true,
+      noFetch: false,
+    })
+  })
+
+  test('reads a listing, with and without a project', () => {
+    expect(parseArgs(['--list'])).toEqual({ mode: 'list' })
+    expect(parseArgs(['--list', 'framework'])).toEqual({ mode: 'list', project: 'framework' })
+  })
+
+  test('rejects cache flags on a listing, which reads the catalog fresh either way', () => {
+    expect(parseArgs(['--list', '--no-fetch'])).toEqual({ error: '--list takes no --refresh or --no-fetch' })
+    expect(parseArgs(['--list', '--refresh'])).toEqual({ error: '--list takes no --refresh or --no-fetch' })
+  })
+
+  test('rejects a second positional after --list, rather than silently ignoring it', () => {
+    expect(parseArgs(['--list', 'boot', '4.1.1'])).toEqual({ error: 'unexpected argument: 4.1.1' })
+  })
+
+  test('still requires a version when resolving', () => {
+    expect(parseArgs(['boot'])).toEqual({ error: 'missing <version>' })
   })
 })

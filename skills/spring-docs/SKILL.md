@@ -3,7 +3,7 @@ name: spring-docs
 allowed-tools:
   - Bash(node ${CLAUDE_SKILL_DIR}/scripts/docs.mjs *)
   - Bash(node ${CLAUDE_SKILL_DIR}/scripts/detect.mjs *)
-description: Open the reference documentation for one Spring project and version — Spring Boot 3.3.0-3.x and 4.0.8+. Use when answering a question about Spring behavior, configuration properties, auto-configuration, actuator, testing support or an upgrade path, and whenever the answer must match the version the project actually declares rather than the newest release. Takes "<project> <version>", e.g. "boot 3.5.16".
+description: Open the reference documentation for one Spring project and version — Spring Boot (`boot`) and Spring Framework (`framework`). Use when answering a question about Spring behavior, configuration properties, auto-configuration, actuator, testing support or an upgrade path, and whenever the answer must match the version the project actually declares rather than the newest release. Takes "<project> <version>", e.g. "boot 3.5.16" or "framework 6.2.12"; `--list` reports which versions are published.
 ---
 
 # Spring reference documentation
@@ -52,6 +52,11 @@ node ${CLAUDE_SKILL_DIR}/scripts/detect.mjs .
 
 Ask the user only when detection returns `kind: "not-found"` or `"unsupported"`.
 
+Detection covers Spring Boot only, because Boot is what a build file declares.
+Spring Framework arrives as a transitive dependency of Boot and appears nowhere
+in `build.gradle` or `pom.xml`, so ask the user which Framework version they
+mean rather than guessing one from the Boot version.
+
 ## When a version is not published
 
 `kind: "unavailable"` is not a failure to work around. The `suggestion` field
@@ -63,10 +68,25 @@ which version you are describing.
 
 ## Coverage
 
-- `boot` — Spring Boot `3.3.0`-`3.x` and `4.0.8`+. 3.2 and older predate the
-  Antora documentation component; 4.0.0-4.0.7 publish no content archive.
+`pleaseai/spring-docs` publishes on its own schedule, so no version list is
+written down here — one would be a claim about another repository that was true
+when it was typed. Ask the catalog instead:
+
+```bash
+node ${CLAUDE_SKILL_DIR}/scripts/docs.mjs --list            # every project
+node ${CLAUDE_SKILL_DIR}/scripts/docs.mjs --list framework  # just one
+```
+
+It prints each project's `published` versions, plus any `unpublished` ones — a
+tag reserved with no archive behind it yet. A failed resolution reports the same
+thing in its `suggestion`, so the listing is only needed when nothing has been
+looked up yet, such as answering "which versions do you have".
+
+Two gaps belong to upstream rather than to the catalog, and no amount of
+rebuilding will close them:
+
+- Spring Boot 3.2 and older predate the Antora documentation component, and
+  4.0.0-4.0.7 publish no content archive. Neither will ever be listed.
 - Spring Boot 3.x trees omit the generated appendix (auto-configuration class
   listings, configuration-property tables) because upstream never publishes it.
   Configuration properties for 3.x therefore have to come from the prose pages.
-- Other Spring projects (framework, security, data) are not published yet;
-  `unknown-project` says so.

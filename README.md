@@ -103,6 +103,10 @@ bun run scripts/docs.ts boot 3.5.16
 # Require a cache hit (offline), or force a re-download
 bun run scripts/docs.ts boot 3.5.16 --no-fetch
 bun run scripts/docs.ts boot 3.5.16 --refresh
+
+# Which projects and versions are published at all?
+bun run scripts/docs.ts --list
+bun run scripts/docs.ts --list framework
 ```
 
 ```json
@@ -133,15 +137,25 @@ Each unpacked tree carries the `manifest.json` from its release: upstream reposi
 
 ## Coverage
 
-| Project | Versions | Source |
-|---|---|---|
-| `boot` | Spring Boot `3.3.0`-`3.x`, `4.0.8`+ | [`pleaseai/spring-docs`](https://github.com/pleaseai/spring-docs) releases |
+Two project keys resolve today, both served from [`pleaseai/spring-docs`](https://github.com/pleaseai/spring-docs) releases:
+
+- `boot` — Spring Boot reference
+- `framework` — Spring Framework reference
+
+Which versions each key resolves is the catalog's answer, not this file's — the docs repository publishes on its own schedule, and a list written here would be stale the first time it does:
+
+```bash
+node skills/spring-docs/scripts/docs.mjs --list       # every project
+node skills/spring-docs/scripts/docs.mjs --list boot  # just one
+```
 
 Not buildable upstream, and therefore absent: Boot 3.2 and older predate the Antora documentation component, and 4.0.0-4.0.7 publish no content archive. Pre-release versions (M, RC, SNAPSHOT) are out of scope.
 
 Spring Boot 3.x trees omit the generated appendix — auto-configuration class listings and configuration-property tables are a Gradle build output upstream never publishes. The prose corpus (reference, how-to, tutorial, specification) is complete.
 
-Framework, Security, Data and Cloud are not published yet. When they are, resolving them is the same call with a different project key; BOM-based resolution of one declared Boot version into the whole component matrix belongs to that point, not before it.
+Security, Data and Cloud are not published yet. When they are, resolving them is the same call with a different project key.
+
+Version *detection* remains Boot-only, because Boot is the only component a build file declares — Framework arrives as a transitive dependency and appears in no `build.gradle` or `pom.xml`. Resolving one declared Boot version into the whole component matrix through its BOM is the thing that would close that gap, and it is not built yet.
 
 ## Plugin structure
 

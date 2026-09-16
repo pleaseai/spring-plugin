@@ -9,6 +9,7 @@ import {
   isSafeSegment,
   lookupTag,
   parseChecksum,
+  summarizeCatalog,
 } from '../lib/docs-cache.ts'
 
 const CATALOG = {
@@ -154,5 +155,79 @@ describe('isCatalog', () => {
     // Absent, not null: `lookupTag` would hand callers `undefined` behind a
     // `string | null` type.
     expect(isCatalog({ version: '1', projects: { boot: { '3.5.16': { tag: 'boot-3.5.16' } } } })).toBe(false)
+  })
+})
+
+describe('summarizeCatalog', () => {
+  const MULTI = {
+    version: '1',
+    generated_at: '2026-09-15T13:47:09.470Z',
+    projects: {
+      framework: {
+        '6.2.0': { tag: 'framework-6.2.0', released_at: '2026-01-01T00:00:00Z' },
+      },
+      boot: {
+        '3.5.9': { tag: 'boot-3.5.9', released_at: '2026-05-01T00:00:00Z' },
+        '3.5.10': { tag: 'boot-3.5.10', released_at: '2026-06-01T00:00:00Z' },
+        '4.1.1': { tag: 'boot-4.1.1', released_at: null },
+      },
+    },
+  }
+
+  test('reports every project, with reserved tags kept out of the published list', () => {
+    expect(summarizeCatalog(MULTI)).toEqual({
+      kind: 'coverage',
+      projects: [
+        { project: 'boot', published: ['3.5.9', '3.5.10'], unpublished: ['4.1.1'] },
+        { project: 'framework', published: ['6.2.0'], unpublished: [] },
+      ],
+    })
+  })
+
+  test('orders versions numerically, so 3.5.10 follows 3.5.9 instead of preceding it', () => {
+    const summary = summarizeCatalog(MULTI, 'boot')
+    expect(summary).toMatchObject({ kind: 'coverage' })
+    expect(summary.kind === 'coverage' && summary.projects[0]?.published).toEqual(['3.5.9', '3.5.10'])
+  })
+
+  test('narrows to one project when asked', () => {
+    expect(summarizeCatalog(MULTI, 'framework')).toEqual({
+      kind: 'coverage',
+      projects: [{ project: 'framework', published: ['6.2.0'], unpublished: [] }],
+    })
+  })
+
+  test('names the known projects when the requested one is absent', () => {
+    expect(summarizeCatalog(MULTI, 'security')).toEqual({
+      kind: 'unknown-project',
+      project: 'security',
+      known: ['boot', 'framework'],
+    })
+  })
+
+  test('orders a shorter version before the longer one it prefixes', () => {
+    const catalog = {
+      ...MULTI,
+      projects: {
+        boot: {
+          '4.0': { tag: 'boot-4.0', released_at: '2026-01-01T00:00:00Z' },
+          '4.0.8': { tag: 'boot-4.0.8', released_at: '2026-01-01T00:00:00Z' },
+          '4': { tag: 'boot-4', released_at: '2026-01-01T00:00:00Z' },
+        },
+      },
+    }
+    const summary = summarizeCatalog(catalog, 'boot')
+    expect(summary.kind === 'coverage' && summary.projects[0]?.published).toEqual(['4', '4.0', '4.0.8'])
+  })
+
+  test('refuses a catalog schema it does not understand, as lookupTag does', () => {
+    expect(summarizeCatalog({ ...MULTI, version: '2' })).toEqual({ kind: 'schema', found: '2' })
+  })
+
+  test('reports a project that publishes nothing as empty rather than absent', () => {
+    expect(summarizeCatalog({ ...MULTI, projects: { boot: {} } })).toEqual({
+      kind: 'coverage',
+      projects: [{ project: 'boot', published: [], unpublished: [] }],
+    })
   })
 })

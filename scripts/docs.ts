@@ -14,14 +14,15 @@
  *
  * Usage:
  *   node scripts/docs.ts boot 4.1.1 [--refresh] [--no-fetch]
+ *   node scripts/docs.ts --list [project]
  *
  * Exit codes:
- *   0 — docs are on disk; `path` in the JSON output says where
- *   1 — that version is not published, or it could not be fetched
+ *   0 — docs are on disk (`path` says where), or coverage was listed
+ *   1 — that version is not published, or the catalog could not be fetched
  *   2 — bad arguments, or an unexpected internal error
  */
 
-import type { Catalog } from './lib/docs-cache.ts'
+import type { Catalog, ProjectCoverage } from './lib/docs-cache.ts'
 import { Buffer } from 'node:buffer'
 import { spawnSync } from 'node:child_process'
 import { createHash, randomUUID } from 'node:crypto'
@@ -40,6 +41,7 @@ import {
   isSafeSegment,
   lookupTag,
   parseChecksum,
+  summarizeCatalog,
 } from './lib/docs-cache.ts'
 
 /** Test-only override for the cache home directory, as in `detect.ts`. */
@@ -154,6 +156,36 @@ async function fetchText(fetchImpl: Fetcher, url: string): Promise<string | { er
   catch (err) {
     return { error: `GET ${url} failed: ${err instanceof Error ? err.message : String(err)}` }
   }
+}
+
+/** A catalog could not be obtained; the wording callers report verbatim. */
+interface CatalogFailure {
+  reason: string
+  suggestion?: string
+}
+
+/**
+ * Fetch and validate `catalog.json`.
+ *
+ * Shared by resolution and coverage listing so the two can never disagree about
+ * what the catalog says — the listing exists precisely to answer "what would a
+ * resolution find", and a second copy of this parse is a second chance to drift.
+ */
+async function fetchCatalog(fetchImpl: Fetcher): Promise<Catalog | CatalogFailure> {
+  const text = await fetchText(fetchImpl, CATALOG_URL)
+  if (typeof text !== 'string')
+    return { reason: text.error, suggestion: 'check network access to raw.githubusercontent.com' }
+
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(text)
+  }
+  catch (err) {
+    return { reason: `catalog.json is not valid JSON: ${err instanceof Error ? err.message : String(err)}` }
+  }
+  if (!isCatalog(parsed))
+    return { reason: 'catalog.json does not have the expected shape', suggestion: 'update the plugin' }
+  return parsed
 }
 
 /** True when `path` holds a documentation tree a caller can actually read from. */
@@ -561,20 +593,10 @@ export async function resolveDocs(options: ResolveOptions): Promise<ResolveResul
   // The catalog is consulted even on a cache hit: it is a few kilobytes, and it
   // is the only thing that reports a rebuild having moved this version to a new
   // tag. Only the archive download — the expensive half — is skipped.
-  const catalogText = await fetchText(fetchImpl, CATALOG_URL)
-  if (typeof catalogText !== 'string')
-    return unavailable(project, version, catalogText.error, 'check network access to raw.githubusercontent.com')
-
-  let parsed: unknown
-  try {
-    parsed = JSON.parse(catalogText)
-  }
-  catch (err) {
-    return unavailable(project, version, `catalog.json is not valid JSON: ${err instanceof Error ? err.message : String(err)}`)
-  }
-  if (!isCatalog(parsed))
-    return unavailable(project, version, 'catalog.json does not have the expected shape', 'update the plugin')
-  const catalog: Catalog = parsed
+  const fetched = await fetchCatalog(fetchImpl)
+  if (!('projects' in fetched))
+    return unavailable(project, version, fetched.reason, fetched.suggestion)
+  const catalog: Catalog = fetched
 
   const lookup = lookupTag(catalog, project, version)
   switch (lookup.kind) {
@@ -675,30 +697,99 @@ export async function resolveDocs(options: ResolveOptions): Promise<ResolveResul
   return ready(project, version, tag, target, false)
 }
 
+export interface ListOptions {
+  /** Limit the report to one project; omitted, every project is listed. */
+  project?: string
+  fetchImpl?: Fetcher
+}
+
+export interface CoverageResult {
+  kind: 'coverage'
+  /** When the docs repository last regenerated the catalog. */
+  generatedAt: string | null
+  projects: ProjectCoverage[]
+}
+
+export type ListResult
+  = | CoverageResult
+    | { kind: 'unavailable', reason: string, suggestion?: string }
+
+/**
+ * Report which projects and versions `pleaseai/spring-docs` publishes.
+ *
+ * This is the skill's coverage answer. It is a live catalog read rather than a
+ * list maintained in `SKILL.md`, because the docs repository publishes on its
+ * own schedule: anything written down here is a claim about another repository
+ * that was true when it was typed, and versions published afterwards become
+ * invisible to the agent rather than merely undocumented.
+ */
+export async function listDocs(options: ListOptions = {}): Promise<ListResult> {
+  const fetchImpl = options.fetchImpl ?? ((url: string) => fetch(url))
+  const { project } = options
+
+  const fetched = await fetchCatalog(fetchImpl)
+  if (!('projects' in fetched))
+    return { kind: 'unavailable', ...fetched }
+
+  const summary = summarizeCatalog(fetched, project)
+  switch (summary.kind) {
+    case 'schema':
+      return {
+        kind: 'unavailable',
+        reason: `catalog.json is schema version ${summary.found}, this plugin understands 1`,
+        suggestion: 'update the plugin',
+      }
+    case 'unknown-project':
+      return {
+        kind: 'unavailable',
+        reason: `${DOCS_REPO} publishes no project "${summary.project}"`,
+        suggestion: `known projects: ${summary.known.join(', ') || 'none'}`,
+      }
+  }
+
+  return { kind: 'coverage', generatedAt: fetched.generated_at, projects: summary.projects }
+}
+
 // ------------------------------ CLI -----------------------------------------
 
-const USAGE = 'usage: bun run scripts/docs.ts <project> <version> [--refresh] [--no-fetch]'
+const USAGE = [
+  'usage: bun run scripts/docs.ts <project> <version> [--refresh] [--no-fetch]',
+  '       bun run scripts/docs.ts --list [project]',
+].join('\n')
 
-interface ParsedArgs {
-  project: string
-  version: string
-  refresh: boolean
-  noFetch: boolean
-}
+export type ParsedArgs
+  = | { mode: 'resolve', project: string, version: string, refresh: boolean, noFetch: boolean }
+    | { mode: 'list', project?: string }
 
 export function parseArgs(argv: string[]): ParsedArgs | { error: string } {
   const positional: string[] = []
   let refresh = false
   let noFetch = false
+  let list = false
   for (const arg of argv) {
     if (arg === '--refresh')
       refresh = true
     else if (arg === '--no-fetch')
       noFetch = true
+    else if (arg === '--list')
+      list = true
     else if (arg.startsWith('--'))
       return { error: `unknown argument: ${arg}` }
     else positional.push(arg)
   }
+
+  if (list) {
+    // Neither flag has anything to act on: the catalog is read fresh every
+    // time and never cached, so accepting them would promise behaviour that
+    // does not exist.
+    if (refresh || noFetch)
+      return { error: '--list takes no --refresh or --no-fetch' }
+    const [project, ...extra] = positional
+    if (extra.length > 0)
+      return { error: `unexpected argument: ${extra[0]}` }
+    return project === undefined ? { mode: 'list' } : { mode: 'list', project }
+  }
+
   const [project, version, ...extra] = positional
   if (!project)
     return { error: 'missing <project>' }
@@ -706,7 +797,7 @@ export function parseArgs(argv: string[]): ParsedArgs | { error: string } {
     return { error: 'missing <version>' }
   if (extra.length > 0)
     return { error: `unexpected argument: ${extra[0]}` }
-  return { project, version, refresh, noFetch }
+  return { mode: 'resolve', project, version, refresh, noFetch }
 }
 
 async function cli(argv: string[]): Promise<number> {
@@ -716,9 +807,9 @@ async function cli(argv: string[]): Promise<number> {
     return 2
   }
 
-  let result: ResolveResult
+  let result: ResolveResult | ListResult
   try {
-    result = await resolveDocs(parsed)
+    result = parsed.mode === 'list' ? await listDocs(parsed) : await resolveDocs(parsed)
   }
   catch (err) {
     process.stderr.write(`${err instanceof Error ? err.stack ?? err.message : String(err)}\n`)
@@ -726,7 +817,7 @@ async function cli(argv: string[]): Promise<number> {
   }
 
   process.stdout.write(`${JSON.stringify(result, null, 2)}\n`)
-  return result.kind === 'ready' ? 0 : 1
+  return result.kind === 'unavailable' ? 1 : 0
 }
 
 if (import.meta.main) {

@@ -86,6 +86,44 @@ function parseChecksum(contents, expectedName) {
     return;
   return match[1].toLowerCase();
 }
+function summarizeCatalog(catalog, project) {
+  if (catalog.version !== SUPPORTED_CATALOG_VERSION)
+    return { kind: "schema", found: catalog.version };
+  const names = Object.keys(catalog.projects).sort();
+  if (project !== undefined && !names.includes(project))
+    return { kind: "unknown-project", project, known: names };
+  const wanted = project === undefined ? names : [project];
+  return { kind: "coverage", projects: wanted.map((name) => coverageOf(catalog, name)) };
+}
+function coverageOf(catalog, project) {
+  const versions = catalog.projects[project] ?? {};
+  const published = [];
+  const unpublished = [];
+  for (const [version, entry] of Object.entries(versions))
+    (entry.released_at === null ? unpublished : published).push(version);
+  published.sort(compareVersions);
+  unpublished.sort(compareVersions);
+  return { project, published, unpublished };
+}
+var VERSION_CHUNK_RE = /\d+|\D+/g;
+var DIGIT_CHUNK_RE = /^\d/;
+function compareVersions(a, b) {
+  const left = a.match(VERSION_CHUNK_RE) ?? [];
+  const right = b.match(VERSION_CHUNK_RE) ?? [];
+  for (let i = 0;i < Math.max(left.length, right.length); i++) {
+    const x = left[i];
+    const y = right[i];
+    if (x === undefined)
+      return -1;
+    if (y === undefined)
+      return 1;
+    if (x === y)
+      continue;
+    const numeric = DIGIT_CHUNK_RE.test(x) && DIGIT_CHUNK_RE.test(y);
+    return numeric ? Number(x) - Number(y) : x < y ? -1 : 1;
+  }
+  return 0;
+}
 
 // scripts/docs.ts
 var CACHE_HOME_ENV_OVERRIDE = "PLEASEAI_SPRING_CACHE_HOME";
@@ -126,6 +164,20 @@ async function fetchText(fetchImpl, url) {
   } catch (err) {
     return { error: `GET ${url} failed: ${err instanceof Error ? err.message : String(err)}` };
   }
+}
+async function fetchCatalog(fetchImpl) {
+  const text = await fetchText(fetchImpl, CATALOG_URL);
+  if (typeof text !== "string")
+    return { reason: text.error, suggestion: "check network access to raw.githubusercontent.com" };
+  let parsed;
+  try {
+    parsed = JSON.parse(text);
+  } catch (err) {
+    return { reason: `catalog.json is not valid JSON: ${err instanceof Error ? err.message : String(err)}` };
+  }
+  if (!isCatalog(parsed))
+    return { reason: "catalog.json does not have the expected shape", suggestion: "update the plugin" };
+  return parsed;
 }
 function isUsableTree(path) {
   try {
@@ -286,18 +338,10 @@ async function resolveDocs(options) {
     }
     return ready(project, version, tag, path, true);
   }
-  const catalogText = await fetchText(fetchImpl, CATALOG_URL);
-  if (typeof catalogText !== "string")
-    return unavailable(project, version, catalogText.error, "check network access to raw.githubusercontent.com");
-  let parsed;
-  try {
-    parsed = JSON.parse(catalogText);
-  } catch (err) {
-    return unavailable(project, version, `catalog.json is not valid JSON: ${err instanceof Error ? err.message : String(err)}`);
-  }
-  if (!isCatalog(parsed))
-    return unavailable(project, version, "catalog.json does not have the expected shape", "update the plugin");
-  const catalog = parsed;
+  const fetched = await fetchCatalog(fetchImpl);
+  if (!("projects" in fetched))
+    return unavailable(project, version, fetched.reason, fetched.suggestion);
+  const catalog = fetched;
   const lookup = lookupTag(catalog, project, version);
   switch (lookup.kind) {
     case "schema":
@@ -347,20 +391,58 @@ async function resolveDocs(options) {
   writePointer(cacheHome, project, version, tag);
   return ready(project, version, tag, target, false);
 }
-var USAGE = "usage: bun run scripts/docs.ts <project> <version> [--refresh] [--no-fetch]";
+async function listDocs(options = {}) {
+  const fetchImpl = options.fetchImpl ?? ((url) => fetch(url));
+  const { project } = options;
+  const fetched = await fetchCatalog(fetchImpl);
+  if (!("projects" in fetched))
+    return { kind: "unavailable", ...fetched };
+  const summary = summarizeCatalog(fetched, project);
+  switch (summary.kind) {
+    case "schema":
+      return {
+        kind: "unavailable",
+        reason: `catalog.json is schema version ${summary.found}, this plugin understands 1`,
+        suggestion: "update the plugin"
+      };
+    case "unknown-project":
+      return {
+        kind: "unavailable",
+        reason: `${DOCS_REPO} publishes no project "${summary.project}"`,
+        suggestion: `known projects: ${summary.known.join(", ") || "none"}`
+      };
+  }
+  return { kind: "coverage", generatedAt: fetched.generated_at, projects: summary.projects };
+}
+var USAGE = [
+  "usage: bun run scripts/docs.ts <project> <version> [--refresh] [--no-fetch]",
+  "       bun run scripts/docs.ts --list [project]"
+].join(`
+`);
 function parseArgs(argv) {
   const positional = [];
   let refresh = false;
   let noFetch = false;
+  let list = false;
   for (const arg of argv) {
     if (arg === "--refresh")
       refresh = true;
     else if (arg === "--no-fetch")
       noFetch = true;
+    else if (arg === "--list")
+      list = true;
     else if (arg.startsWith("--"))
       return { error: `unknown argument: ${arg}` };
     else
       positional.push(arg);
+  }
+  if (list) {
+    if (refresh || noFetch)
+      return { error: "--list takes no --refresh or --no-fetch" };
+    const [project, ...extra] = positional;
+    if (extra.length > 0)
+      return { error: `unexpected argument: ${extra[0]}` };
+    return project === undefined ? { mode: "list" } : { mode: "list", project };
   }
   const [project, version, ...extra] = positional;
   if (!project)
@@ -369,7 +451,7 @@ function parseArgs(argv) {
     return { error: "missing <version>" };
   if (extra.length > 0)
     return { error: `unexpected argument: ${extra[0]}` };
-  return { project, version, refresh, noFetch };
+  return { mode: "resolve", project, version, refresh, noFetch };
 }
 async function cli(argv) {
   const parsed = parseArgs(argv);
@@ -381,7 +463,7 @@ ${USAGE}
   }
   let result;
   try {
-    result = await resolveDocs(parsed);
+    result = parsed.mode === "list" ? await listDocs(parsed) : await resolveDocs(parsed);
   } catch (err) {
     process.stderr.write(`${err instanceof Error ? err.stack ?? err.message : String(err)}
 `);
@@ -389,13 +471,14 @@ ${USAGE}
   }
   process.stdout.write(`${JSON.stringify(result, null, 2)}
 `);
-  return result.kind === "ready" ? 0 : 1;
+  return result.kind === "unavailable" ? 1 : 0;
 }
 if (true) {
   const code = await cli(process.argv.slice(2));
   process.exit(code);
 }
 export {
+  listDocs,
   parseArgs,
   resolveDocs
 };
