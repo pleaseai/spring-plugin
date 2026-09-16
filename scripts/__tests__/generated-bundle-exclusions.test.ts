@@ -41,15 +41,19 @@ async function lines(file: string): Promise<string[]> {
 /**
  * The patterns `.sonarcloud.properties` sets for `key`, as a `key=a,b` line.
  *
- * `.properties` allows whitespace around the `=` and before the key, so match
- * that rather than a bare prefix — a reformatted file should not fail the
- * guard. A commented-out setting starts with `#`, which the anchor rejects.
+ * Split each line on its first `=` and compare the trimmed key, rather than
+ * matching a prefix: `.properties` allows whitespace around the separator and
+ * before the key, and a reformatted file should not fail the guard. A
+ * commented-out setting keeps its `#`, so its key never compares equal.
  */
 async function sonarExclusions(key: string): Promise<string[]> {
-  const setting = new RegExp(`^\\s*${key.replaceAll('.', '\\.')}\\s*=`)
-  const line = (await lines('.sonarcloud.properties')).find(l => setting.test(l))
-  // The first `=` is the separator; no exclusion pattern contains one.
-  return line ? line.slice(line.indexOf('=') + 1).split(',').map(v => v.trim()).filter(Boolean) : []
+  for (const line of await lines('.sonarcloud.properties')) {
+    const separator = line.indexOf('=')
+    if (separator < 0 || line.slice(0, separator).trim() !== key)
+      continue
+    return line.slice(separator + 1).split(',').map(v => v.trim()).filter(Boolean)
+  }
+  return []
 }
 
 /** The `skills/` entries of `.codacy.yml`'s `exclude_paths:` block. */
