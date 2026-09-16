@@ -1,0 +1,38 @@
+README.md
+  s_2e794694b340af::t_bf77c2c24475e0 106-109
+  s_2e794694b340af::t_5026f7cec6e8d3 140-144,148-149
+  s_2e794694b340af::t_dfa71dbc87251e 145-147,150,156-158
+scripts/lib/docs-cache.ts
+  s_2e794694b340af::t_89751170249673 206-256,260-284,286-289
+  s_2e794694b340af::t_070d26801aae93 257-259,285
+scripts/__tests__/docs.test.ts
+  s_2e794694b340af::t_8f4db4a96f54f9 9,589-700
+scripts/docs.ts
+  s_2e794694b340af::t_bed8f3a739a1e1 700-704,706-711,713-750,753-763,768,774-775,780-792,800,810,812,820
+  s_2e794694b340af::t_d63b5ab8f4b72b 17,20-21,25,44,161-190,596-599
+skills/spring-docs/scripts/docs.mjs
+  s_2e794694b340af::t_85c3f3746824e3 89-126,168-181,341-344,394-421,426,432-433,439-446,454,466,474,481
+scripts/__tests__/docs-cache.test.ts
+  s_2e794694b340af::t_742300008d9abd 208-222
+  s_2e794694b340af::t_05c31ab7bd6293 12,160-207,223-232
+  s_2e794694b340af::t_d09dbee17bef37 233
+skills/spring-docs/SKILL.md
+  s_2e794694b340af::t_0a3f92c8fed3eb 6,55-59,71-75,77-89
+  s_2e794694b340af::t_5026f7cec6e8d3 76
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.23",
+  "base_commit_sha": "8420c3a19cc06002cb2ba19450000cf8be325143",
+  "prompts": {},
+  "sessions": {
+    "s_2e794694b340af": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c9950303-3ee3-4294-9bc8-001aa1fdb18b",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Minsu Lee <minsu.lee@pleaseai.dev>"
+    }
+  }
+}
