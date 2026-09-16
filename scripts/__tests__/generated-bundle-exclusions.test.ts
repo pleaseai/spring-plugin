@@ -9,12 +9,18 @@
  * anyone noticed. A pattern that matches no file looks identical to a pattern
  * that works, so assert the match instead of reading the config.
  *
+ * Each reader below takes the *active* setting, never the file's raw text: a
+ * commented-out exclusion still contains a pattern that would match, so a text
+ * scan passes while the analyser receives nothing — the same blind spot one
+ * level down. ESLint's is read from the evaluated config, and the other two
+ * from a line that a leading `#` disqualifies.
+ *
  * `Bun.Glob` stands in for three matchers it is not, so a pass is not proof
  * that SonarCloud reads a pattern the same way. What it does catch is the
  * failure that actually happened: a pattern that matches no bundle at all.
  */
-import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { pathToFileURL } from 'node:url'
 
 import { describe, expect, test } from 'bun:test'
 
@@ -23,19 +29,49 @@ const ROOT = join(import.meta.dir, '..', '..')
 /** The committed bundles every exclusion below is supposed to cover. */
 const BUNDLES = Array.from(new Bun.Glob('skills/*/scripts/*.mjs').scanSync(ROOT), p => p.replaceAll('\\', '/'))
 
-function read(file: string): string {
-  return readFileSync(join(ROOT, file), 'utf8')
+/**
+ * Split on `\r?\n`, not `\n`: the repository carries no `.gitattributes`, so a
+ * Windows checkout with `core.autocrlf=true` leaves a `\r` on every value, and
+ * a pattern ending in `\r` matches no bundle — a false failure that reads
+ * exactly like the misconfiguration this file exists to catch.
+ */
+async function lines(file: string): Promise<string[]> {
+  return (await Bun.file(join(ROOT, file)).text()).split(/\r?\n/)
 }
 
-/** Values of a `key=a,b` line in a `.properties` file. */
-function properties(source: string, key: string): string[] {
-  const line = source.split('\n').find(l => l.startsWith(`${key}=`))
-  return line ? line.slice(key.length + 1).split(',').filter(Boolean) : []
+/** The patterns `.sonarcloud.properties` sets for `key`, as a `key=a,b` line. */
+async function sonarExclusions(key: string): Promise<string[]> {
+  // A commented-out setting starts with `#`, so it never matches the key prefix.
+  const line = (await lines('.sonarcloud.properties')).find(l => l.startsWith(`${key}=`))
+  return line ? line.slice(key.length + 1).split(',').map(v => v.trim()).filter(Boolean) : []
 }
 
-/** Every single-quoted `skills/.../scripts/...` pattern in a config file. */
-function skillPatterns(source: string): string[] {
-  return Array.from(source.matchAll(/'(skills\/[^']*scripts[^']*)'/g), m => m[1]!)
+/** The `skills/` entries of `.codacy.yml`'s `exclude_paths:` block. */
+async function codacyExclusions(): Promise<string[]> {
+  const source = await lines('.codacy.yml')
+  const start = source.findIndex(l => l.startsWith('exclude_paths:'))
+  expect(start).toBeGreaterThanOrEqual(0)
+
+  const patterns: string[] = []
+  for (const line of source.slice(start + 1)) {
+    const entry = /^\s+-\s*'([^']+)'/.exec(line)
+    if (entry) {
+      patterns.push(entry[1] ?? '')
+      continue
+    }
+    // A comment or a blank line sits inside the block; anything else ends it.
+    if (line.trim() !== '' && !line.trimStart().startsWith('#'))
+      break
+  }
+  return patterns.filter(p => p.startsWith('skills/'))
+}
+
+/** The `skills/` ignore patterns ESLint actually loads, off the evaluated config. */
+async function eslintIgnores(): Promise<string[]> {
+  const config = (await import(pathToFileURL(join(ROOT, 'eslint.config.js')).href)) as {
+    default: { ignores?: string[] }[]
+  }
+  return config.default.flatMap(entry => entry.ignores ?? []).filter(p => p.startsWith('skills/'))
 }
 
 function expectCoversBundles(patterns: string[]): void {
@@ -52,17 +88,16 @@ describe('generated bundle exclusions', () => {
     expect(new Set(BUNDLES)).toEqual(new Set(['skills/spring-docs/scripts/detect.mjs', 'skills/spring-docs/scripts/docs.mjs']))
   })
 
-  test('.sonarcloud.properties excludes them from issues and duplication', () => {
-    const source = read('.sonarcloud.properties')
-    expectCoversBundles(properties(source, 'sonar.exclusions'))
-    expectCoversBundles(properties(source, 'sonar.cpd.exclusions'))
+  test('.sonarcloud.properties excludes them from issues and duplication', async () => {
+    expectCoversBundles(await sonarExclusions('sonar.exclusions'))
+    expectCoversBundles(await sonarExclusions('sonar.cpd.exclusions'))
   })
 
-  test('.codacy.yml excludes them', () => {
-    expectCoversBundles(skillPatterns(read('.codacy.yml')))
+  test('.codacy.yml excludes them', async () => {
+    expectCoversBundles(await codacyExclusions())
   })
 
-  test('eslint.config.js ignores them', () => {
-    expectCoversBundles(skillPatterns(read('eslint.config.js')))
+  test('eslint.config.js ignores them', async () => {
+    expectCoversBundles(await eslintIgnores())
   })
 })
