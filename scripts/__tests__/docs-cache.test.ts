@@ -220,6 +220,24 @@ describe('summarizeCatalog', () => {
     expect(summary.kind === 'coverage' && summary.projects[0]?.published).toEqual(['4', '4.0', '4.0.8'])
   })
 
+  test('keeps comparing past a numeric tie, so a leading zero cannot hide a later difference', () => {
+    // '1.02.3' and '1.2.4' agree at the '02'/'2' chunk. Settling on that tie
+    // reported two different versions as equal and left the rest of the list
+    // in input order.
+    const catalog = {
+      ...MULTI,
+      projects: {
+        boot: {
+          '1.2.4': { tag: 'boot-1.2.4', released_at: '2026-01-01T00:00:00Z' },
+          '1.02.3': { tag: 'boot-1.02.3', released_at: '2026-01-01T00:00:00Z' },
+          '1.2.1': { tag: 'boot-1.2.1', released_at: '2026-01-01T00:00:00Z' },
+        },
+      },
+    }
+    const summary = summarizeCatalog(catalog, 'boot')
+    expect(summary.kind === 'coverage' && summary.projects[0]?.published).toEqual(['1.2.1', '1.02.3', '1.2.4'])
+  })
+
   test('refuses a catalog schema it does not understand, as lookupTag does', () => {
     expect(summarizeCatalog({ ...MULTI, version: '2' })).toEqual({ kind: 'schema', found: '2' })
   })

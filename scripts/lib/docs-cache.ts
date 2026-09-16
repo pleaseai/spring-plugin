@@ -289,6 +289,12 @@ const DIGIT_CHUNK_RE = /^\d/
  * today, but that is a property of a generator in another repository, and a
  * coverage report that silently reorders itself when that generator changes is
  * worse than one that always decides for itself.
+ *
+ * Numerically equal chunks do not settle the comparison, because equal as a
+ * number is not equal as text: `1.02.3` and `1.2.4` agree at `02`/`2` and
+ * differ afterwards. Returning that 0 would call two different versions equal
+ * and stop before the chunk that separates them, so the loop carries on and a
+ * run of numeric ties falls through to the whole string.
  */
 function compareVersions(a: string, b: string): number {
   const left = a.match(VERSION_CHUNK_RE) ?? []
@@ -303,9 +309,11 @@ function compareVersions(a: string, b: string): number {
     if (x === y)
       continue
     const numeric = DIGIT_CHUNK_RE.test(x) && DIGIT_CHUNK_RE.test(y)
-    if (numeric)
-      return Number(x) - Number(y)
-    return compareCodeUnits(x, y)
+    if (!numeric)
+      return compareCodeUnits(x, y)
+    const diff = Number(x) - Number(y)
+    if (diff !== 0)
+      return diff
   }
-  return 0
+  return compareCodeUnits(a, b)
 }

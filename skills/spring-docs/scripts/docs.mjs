@@ -125,11 +125,13 @@ function compareVersions(a, b) {
     if (x === y)
       continue;
     const numeric = DIGIT_CHUNK_RE.test(x) && DIGIT_CHUNK_RE.test(y);
-    if (numeric)
-      return Number(x) - Number(y);
-    return compareCodeUnits(x, y);
+    if (!numeric)
+      return compareCodeUnits(x, y);
+    const diff = Number(x) - Number(y);
+    if (diff !== 0)
+      return diff;
   }
-  return 0;
+  return compareCodeUnits(a, b);
 }
 
 // scripts/docs.ts
