@@ -89,7 +89,7 @@ function parseChecksum(contents, expectedName) {
 function summarizeCatalog(catalog, project) {
   if (catalog.version !== SUPPORTED_CATALOG_VERSION)
     return { kind: "schema", found: catalog.version };
-  const names = Object.keys(catalog.projects).sort();
+  const names = Object.keys(catalog.projects).sort(compareCodePoints);
   if (project !== undefined && !names.includes(project))
     return { kind: "unknown-project", project, known: names };
   const wanted = project === undefined ? names : [project];
@@ -104,6 +104,11 @@ function coverageOf(catalog, project) {
   published.sort(compareVersions);
   unpublished.sort(compareVersions);
   return { project, published, unpublished };
+}
+function compareCodePoints(a, b) {
+  if (a === b)
+    return 0;
+  return a < b ? -1 : 1;
 }
 var VERSION_CHUNK_RE = /\d+|\D+/g;
 var DIGIT_CHUNK_RE = /^\d/;
@@ -120,7 +125,9 @@ function compareVersions(a, b) {
     if (x === y)
       continue;
     const numeric = DIGIT_CHUNK_RE.test(x) && DIGIT_CHUNK_RE.test(y);
-    return numeric ? Number(x) - Number(y) : x < y ? -1 : 1;
+    if (numeric)
+      return Number(x) - Number(y);
+    return compareCodePoints(x, y);
   }
   return 0;
 }
@@ -436,14 +443,17 @@ function parseArgs(argv) {
     else
       positional.push(arg);
   }
-  if (list) {
-    if (refresh || noFetch)
-      return { error: "--list takes no --refresh or --no-fetch" };
-    const [project, ...extra] = positional;
-    if (extra.length > 0)
-      return { error: `unexpected argument: ${extra[0]}` };
-    return project === undefined ? { mode: "list" } : { mode: "list", project };
-  }
+  return list ? parseList(positional, refresh || noFetch) : parseResolve(positional, refresh, noFetch);
+}
+function parseList(positional, cacheFlags) {
+  if (cacheFlags)
+    return { error: "--list takes no --refresh or --no-fetch" };
+  const [project, ...extra] = positional;
+  if (extra.length > 0)
+    return { error: `unexpected argument: ${extra[0]}` };
+  return project === undefined ? { mode: "list" } : { mode: "list", project };
+}
+function parseResolve(positional, refresh, noFetch) {
   const [project, version, ...extra] = positional;
   if (!project)
     return { error: "missing <project>" };
