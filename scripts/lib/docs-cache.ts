@@ -232,7 +232,7 @@ export function summarizeCatalog(catalog: Catalog, project?: string): CoverageRe
   if (catalog.version !== SUPPORTED_CATALOG_VERSION)
     return { kind: 'schema', found: catalog.version }
 
-  const names = Object.keys(catalog.projects).sort()
+  const names = Object.keys(catalog.projects).sort(compareCodeUnits)
   if (project !== undefined && !names.includes(project))
     return { kind: 'unknown-project', project, known: names }
 
@@ -249,6 +249,26 @@ function coverageOf(catalog: Catalog, project: string): ProjectCoverage {
   published.sort(compareVersions)
   unpublished.sort(compareVersions)
   return { project, published, unpublished }
+}
+
+/**
+ * Order two strings by UTF-16 code unit — the order a bare `.sort()` implies.
+ *
+ * Code *unit*, not code point: `<` compares UTF-16 units, so a non-BMP
+ * character (stored as a surrogate pair) sorts by its leading surrogate rather
+ * than by its scalar value. Left that way on purpose. What this order has to be
+ * is reproducible, since it is asserted in tests and read by tooling, and code
+ * unit order is exactly as reproducible as code point order; a key that could
+ * expose the difference carries a character `isSafeSegment` rejects, so it
+ * never resolves to documentation whatever position it sorts into.
+ *
+ * Spelled out rather than left implicit, and deliberately not `localeCompare`,
+ * which would vary with the locale of the machine running the CLI.
+ */
+function compareCodeUnits(a: string, b: string): number {
+  if (a === b)
+    return 0
+  return a < b ? -1 : 1
 }
 
 /** Digit runs and non-digit runs, so `3.5.10` sorts after `3.5.9` rather than before it. */
@@ -269,6 +289,12 @@ const DIGIT_CHUNK_RE = /^\d/
  * today, but that is a property of a generator in another repository, and a
  * coverage report that silently reorders itself when that generator changes is
  * worse than one that always decides for itself.
+ *
+ * Numerically equal chunks do not settle the comparison, because equal as a
+ * number is not equal as text: `1.02.3` and `1.2.4` agree at `02`/`2` and
+ * differ afterwards. Returning that 0 would call two different versions equal
+ * and stop before the chunk that separates them, so the loop carries on and a
+ * run of numeric ties falls through to the whole string.
  */
 function compareVersions(a: string, b: string): number {
   const left = a.match(VERSION_CHUNK_RE) ?? []
@@ -283,7 +309,11 @@ function compareVersions(a: string, b: string): number {
     if (x === y)
       continue
     const numeric = DIGIT_CHUNK_RE.test(x) && DIGIT_CHUNK_RE.test(y)
-    return numeric ? Number(x) - Number(y) : (x < y ? -1 : 1)
+    if (!numeric)
+      return compareCodeUnits(x, y)
+    const diff = Number(x) - Number(y)
+    if (diff !== 0)
+      return diff
   }
-  return 0
+  return compareCodeUnits(a, b)
 }
