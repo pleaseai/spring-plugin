@@ -38,11 +38,18 @@ async function lines(file: string): Promise<string[]> {
   return (await Bun.file(join(ROOT, file)).text()).split(/\r?\n/)
 }
 
-/** The patterns `.sonarcloud.properties` sets for `key`, as a `key=a,b` line. */
+/**
+ * The patterns `.sonarcloud.properties` sets for `key`, as a `key=a,b` line.
+ *
+ * `.properties` allows whitespace around the `=` and before the key, so match
+ * that rather than a bare prefix — a reformatted file should not fail the
+ * guard. A commented-out setting starts with `#`, which the anchor rejects.
+ */
 async function sonarExclusions(key: string): Promise<string[]> {
-  // A commented-out setting starts with `#`, so it never matches the key prefix.
-  const line = (await lines('.sonarcloud.properties')).find(l => l.startsWith(`${key}=`))
-  return line ? line.slice(key.length + 1).split(',').map(v => v.trim()).filter(Boolean) : []
+  const setting = new RegExp(`^\\s*${key.replaceAll('.', '\\.')}\\s*=`)
+  const line = (await lines('.sonarcloud.properties')).find(l => setting.test(l))
+  // The first `=` is the separator; no exclusion pattern contains one.
+  return line ? line.slice(line.indexOf('=') + 1).split(',').map(v => v.trim()).filter(Boolean) : []
 }
 
 /** The `skills/` entries of `.codacy.yml`'s `exclude_paths:` block. */
@@ -54,8 +61,9 @@ async function codacyExclusions(): Promise<string[]> {
   const patterns: string[] = []
   for (const line of source.slice(start + 1)) {
     const entry = line.trim()
-    if (entry.startsWith('- \'') && entry.endsWith('\'')) {
-      patterns.push(entry.slice(3, -1))
+    if (entry.startsWith('- ')) {
+      // Strip the quotes YAML does not require here; single, double, or none.
+      patterns.push(entry.slice(2).trim().replace(/^["']|["']$/g, ''))
       continue
     }
     // A comment or a blank line sits inside the block; anything else ends it.
