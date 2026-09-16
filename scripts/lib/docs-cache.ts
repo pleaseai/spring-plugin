@@ -232,7 +232,7 @@ export function summarizeCatalog(catalog: Catalog, project?: string): CoverageRe
   if (catalog.version !== SUPPORTED_CATALOG_VERSION)
     return { kind: 'schema', found: catalog.version }
 
-  const names = Object.keys(catalog.projects).sort()
+  const names = Object.keys(catalog.projects).sort(compareCodePoints)
   if (project !== undefined && !names.includes(project))
     return { kind: 'unknown-project', project, known: names }
 
@@ -249,6 +249,19 @@ function coverageOf(catalog: Catalog, project: string): ProjectCoverage {
   published.sort(compareVersions)
   unpublished.sort(compareVersions)
   return { project, published, unpublished }
+}
+
+/**
+ * Order two strings by code point, the order a bare `.sort()` implies.
+ *
+ * Spelled out rather than left implicit, and deliberately not `localeCompare`:
+ * project keys are ASCII identifiers, this order is asserted in tests, and a
+ * locale-sensitive collation would vary with the machine running the CLI.
+ */
+function compareCodePoints(a: string, b: string): number {
+  if (a === b)
+    return 0
+  return a < b ? -1 : 1
 }
 
 /** Digit runs and non-digit runs, so `3.5.10` sorts after `3.5.9` rather than before it. */
@@ -283,7 +296,9 @@ function compareVersions(a: string, b: string): number {
     if (x === y)
       continue
     const numeric = DIGIT_CHUNK_RE.test(x) && DIGIT_CHUNK_RE.test(y)
-    return numeric ? Number(x) - Number(y) : (x < y ? -1 : 1)
+    if (numeric)
+      return Number(x) - Number(y)
+    return compareCodePoints(x, y)
   }
   return 0
 }

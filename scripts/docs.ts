@@ -778,18 +778,24 @@ export function parseArgs(argv: string[]): ParsedArgs | { error: string } {
     else positional.push(arg)
   }
 
-  if (list) {
-    // Neither flag has anything to act on: the catalog is read fresh every
-    // time and never cached, so accepting them would promise behaviour that
-    // does not exist.
-    if (refresh || noFetch)
-      return { error: '--list takes no --refresh or --no-fetch' }
-    const [project, ...extra] = positional
-    if (extra.length > 0)
-      return { error: `unexpected argument: ${extra[0]}` }
-    return project === undefined ? { mode: 'list' } : { mode: 'list', project }
-  }
+  return list
+    ? parseList(positional, refresh || noFetch)
+    : parseResolve(positional, refresh, noFetch)
+}
 
+function parseList(positional: string[], cacheFlags: boolean): ParsedArgs | { error: string } {
+  // Neither flag has anything to act on: the catalog is read fresh every time
+  // and never cached, so accepting them would promise behaviour that does not
+  // exist.
+  if (cacheFlags)
+    return { error: '--list takes no --refresh or --no-fetch' }
+  const [project, ...extra] = positional
+  if (extra.length > 0)
+    return { error: `unexpected argument: ${extra[0]}` }
+  return project === undefined ? { mode: 'list' } : { mode: 'list', project }
+}
+
+function parseResolve(positional: string[], refresh: boolean, noFetch: boolean): ParsedArgs | { error: string } {
   const [project, version, ...extra] = positional
   if (!project)
     return { error: 'missing <project>' }
