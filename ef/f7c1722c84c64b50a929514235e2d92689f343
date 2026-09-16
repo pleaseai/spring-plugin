@@ -1,0 +1,19 @@
+scripts/__tests__/docs-cache.test.ts
+  s_2e794694b340af::t_fd3eefe0d373d3 177-192,225,232
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.23",
+  "base_commit_sha": "eff7c1722c84c64b50a929514235e2d92689f343",
+  "prompts": {},
+  "sessions": {
+    "s_2e794694b340af": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c9950303-3ee3-4294-9bc8-001aa1fdb18b",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Minsu Lee <minsu.lee@pleaseai.dev>"
+    }
+  }
+}
