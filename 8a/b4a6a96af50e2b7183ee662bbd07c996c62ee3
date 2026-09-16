@@ -1,0 +1,20 @@
+scripts/__tests__/generated-bundle-exclusions.test.ts
+  s_bd65c2c0ad77bf::t_5d3417d78e8074 41-47,64-66
+  s_bd65c2c0ad77bf::t_f4d19f29261a06 49-52
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.23",
+  "base_commit_sha": "8ab4a6a96af50e2b7183ee662bbd07c996c62ee3",
+  "prompts": {},
+  "sessions": {
+    "s_bd65c2c0ad77bf": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3b0255d8-9b82-4673-aa79-324577354885",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Minsu Lee <minsu.lee@pleaseai.dev>"
+    }
+  }
+}
